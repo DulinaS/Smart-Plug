@@ -1,53 +1,83 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
+import '../../core/config/env.dart';
 import '../models/device.dart';
+import '../models/sensor_reading.dart';
 
 class DeviceRepository {
   final HttpClient _httpClient;
 
   DeviceRepository(this._httpClient);
 
-  Future<List<Device>> getDevices() async {
+  // Get latest sensor reading from your friend's API
+  Future<SensorReading> getLatestReading() async {
     try {
-      final response = await _httpClient.dio.get('/devices');
-      final List<dynamic> data = response.data['devices'];
-      return data.map((json) => Device.fromJson(json)).toList();
+      final response = await _httpClient.dio.get(
+        AppConfig.latestReadingEndpoint,
+      );
+      return SensorReading.fromApiResponse(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
+    }
+  }
+
+  // Send control command to device
+  Future<void> toggleDevice(String deviceId, bool turnOn) async {
+    try {
+      final command = DeviceCommand(command: turnOn ? 'ON' : 'OFF');
+      await _httpClient.dio.post(
+        AppConfig.controlEndpoint,
+        data: command.toJson(),
+      );
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Mock methods for screens that need device list (update when friend provides APIs)
+  Future<List<Device>> getDevices() async {
+    try {
+      // Get latest reading to create a mock device
+      final reading = await getLatestReading();
+
+      // Create a mock device with real sensor data
+      final device = Device(
+        id: 'esp32-device-001',
+        name: 'Smart Plug Device',
+        room: 'Living Room',
+        status: DeviceExtensions.statusFromSensorReading(reading),
+        lastSeen: DateTime.parse(reading.timestamp),
+        firmwareVersion: 'v1.0.0',
+        isOnline: true, // Device is online if we got recent data
+        config: const DeviceConfig(
+          maxCurrent: 16.0,
+          maxPower: 3680.0,
+          safetyEnabled: true,
+          reportInterval: 5,
+        ),
+      );
+
+      return [device];
+    } catch (e) {
+      // Return empty list if API fails
+      return [];
     }
   }
 
   Future<Device> getDevice(String deviceId) async {
-    try {
-      final response = await _httpClient.dio.get('/devices/$deviceId');
-      return Device.fromJson(response.data['device']);
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
+    final devices = await getDevices();
+    final device = devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('Device not found'),
+    );
+    return device;
   }
 
-  Future<void> toggleDevice(String deviceId, bool turnOn) async {
-    try {
-      await _httpClient.dio.post(
-        '/devices/$deviceId/command',
-        data: {'action': turnOn ? 'ON' : 'OFF'},
-      );
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
+  // Placeholder methods (implement when friend provides APIs)
   Future<Device> addDevice(String deviceId, String deviceSecret) async {
-    try {
-      final response = await _httpClient.dio.post(
-        '/devices',
-        data: {'deviceId': deviceId, 'secret': deviceSecret},
-      );
-      return Device.fromJson(response.data['device']);
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
+    // TODO: Implement when friend provides device registration API
+    throw UnimplementedError('Device registration API not yet available');
   }
 
   Future<void> updateDevice(
@@ -55,22 +85,13 @@ class DeviceRepository {
     String? name,
     String? room,
   }) async {
-    try {
-      await _httpClient.dio.put(
-        '/devices/$deviceId',
-        data: {if (name != null) 'name': name, if (room != null) 'room': room},
-      );
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
+    // TODO: Implement when friend provides device update API
+    throw UnimplementedError('Device update API not yet available');
   }
 
   Future<void> deleteDevice(String deviceId) async {
-    try {
-      await _httpClient.dio.delete('/devices/$deviceId');
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
+    // TODO: Implement when friend provides device deletion API
+    throw UnimplementedError('Device deletion API not yet available');
   }
 
   String _handleError(DioException e) {
@@ -78,8 +99,12 @@ class DeviceRepository {
       return 'Device not found';
     } else if (e.response?.statusCode == 403) {
       return 'Access denied';
+    } else if (e.type == DioExceptionType.connectionTimeout) {
+      return 'Connection timeout - check your internet';
+    } else if (e.type == DioExceptionType.receiveTimeout) {
+      return 'Device not responding';
     } else {
-      return 'Device operation failed. Please try again.';
+      return 'Device operation failed: ${e.message}';
     }
   }
 }

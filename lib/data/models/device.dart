@@ -1,5 +1,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
+import 'sensor_reading.dart';
+
 part '../user/device.g.dart';
 
 @JsonSerializable()
@@ -68,4 +70,19 @@ class DeviceConfig {
   factory DeviceConfig.fromJson(Map<String, dynamic> json) =>
       _$DeviceConfigFromJson(json);
   Map<String, dynamic> toJson() => _$DeviceConfigToJson(this);
+}
+
+// Add this extension to your existing Device model
+extension DeviceExtensions on Device {
+  // Convert SensorReading to DeviceStatus
+  static DeviceStatus statusFromSensorReading(SensorReading reading) {
+    return DeviceStatus(
+      isOn: reading.power > 5.0, // Device is ON if power > 5W
+      voltage: reading.voltage,
+      current: reading.current,
+      power: reading.power,
+      energyToday: 0.0, // Calculate from historical data if available
+      timestamp: DateTime.parse(reading.timestamp),
+    );
+  }
 }
