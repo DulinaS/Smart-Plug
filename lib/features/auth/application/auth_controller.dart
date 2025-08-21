@@ -34,7 +34,9 @@ class AuthController extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
 
   AuthController(this._authRepository) : super(const AuthState()) {
-    _checkAuthStatus();
+    //_checkAuthStatus();
+    // For testing purposes, we can mock a login
+    _mockLogin();
   }
 
   Future<void> _checkAuthStatus() async {
@@ -88,6 +90,23 @@ class AuthController extends StateNotifier<AuthState> {
 
   void clearError() {
     state = state.copyWith(error: null);
+  }
+
+  void _mockLogin() {
+    // Create a fake user for testing
+    final mockUser = User(
+      id: 'mock-user-123',
+      email: 'dulina@gmail.com',
+      username: 'testuser',
+      displayName: 'Test User',
+      createdAt: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      user: mockUser,
+      isAuthenticated: true,
+      isLoading: false,
+    );
   }
 }
 
