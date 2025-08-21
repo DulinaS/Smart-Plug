@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:smart_plug/data/models/device.dart';
 import '../../../core/widgets/loading_widget.dart';
 import '../../../core/utils/formatters.dart';
-import '../application/device_controller.dart';
+import '../application/device_detail_controller.dart';
 import '../widgets/device_controls.dart';
 import '../widgets/device_status_card.dart';
 import '../widgets/power_chart.dart';
+import 'device_info_card.dart';
 
 class DeviceDetailScreen extends ConsumerWidget {
   final String deviceId;

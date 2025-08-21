@@ -2,7 +2,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 import 'sensor_reading.dart';
 
-part '../user/device.g.dart';
+part 'device.g.dart';
 
 @JsonSerializable()
 class Device {

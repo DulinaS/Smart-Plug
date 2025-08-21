@@ -31,7 +31,7 @@ class SchedulesScreen extends ConsumerWidget {
         child: scheduleState.isLoading
             ? const Center(child: CircularProgressIndicator())
             : scheduleState.schedules.isEmpty
-            ? _buildEmptyState(context)
+            ? _buildEmptyState(context, ref)
             : ListView.builder(
                 padding: const EdgeInsets.all(16.0),
                 itemCount: scheduleState.schedules.length,
@@ -48,7 +48,7 @@ class SchedulesScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildEmptyState(BuildContext context, WidgetRef ref) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -63,7 +63,7 @@ class SchedulesScreen extends ConsumerWidget {
           const Text('Create your first schedule to automate your device'),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => _showScheduleEditor(context, null),
+            onPressed: () => _showScheduleEditor(context, ref),
             icon: const Icon(Icons.add),
             label: const Text('Add Schedule'),
           ),

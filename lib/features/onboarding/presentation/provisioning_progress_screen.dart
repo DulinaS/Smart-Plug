@@ -295,10 +295,4 @@ class ProvisioningProgressScreen extends ConsumerWidget {
   }
 }
 
-enum ProvisioningStep {
-  connecting,
-  sendingCredentials,
-  deviceConnecting,
-  cloudRegistration,
-  finalizing,
-}
+/* Removed duplicate enum definition. Use the one from provisioning_controller.dart */

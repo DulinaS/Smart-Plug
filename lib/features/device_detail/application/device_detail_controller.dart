@@ -125,6 +125,17 @@ class DeviceDetailController extends StateNotifier<DeviceDetailState> {
     }
   }
 
+  Future<void> updateDevice({String? name, String? room}) async {
+    if (state.device == null) return;
+
+    try {
+      await _deviceRepository.updateDevice(deviceId, name: name, room: room);
+      await loadDevice();
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
   void clearError() {
     state = state.copyWith(error: null);
   }
