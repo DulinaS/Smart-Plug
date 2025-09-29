@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../features/auth/application/auth_controller.dart';
-import '../features/auth/presentation/login_screen.dart';
-import '../features/auth/presentation/register_screen.dart';
-import '../features/dashboard/presentation/dashboard_screen.dart';
-import '../features/device_detail/presentation/device_detail_screen.dart';
-import '../features/onboarding/presentation/add_device_screen.dart';
-import '../features/settings/presentation/settings_screen.dart';
+import '../../features/auth/application/auth_controller.dart';
+import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/register_screen.dart';
+import '../../features/auth/presentation/email_verification_screen.dart';
+import '../../features/dashboard/presentation/dashboard_screen.dart';
+import '../../features/device_detail/presentation/device_detail_screen.dart';
+import '../../features/onboarding/presentation/add_device_screen.dart';
+import '../../features/settings/presentation/settings_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authControllerProvider);
@@ -21,16 +22,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Show loading screen while checking auth
       if (isLoading) return '/loading';
 
-      // Redirect to login if not authenticated
-      if (!isAuthenticated && state.matchedLocation != '/register') {
+      // Allow access to auth-related pages without authentication
+      final authPages = ['/login', '/register', '/verify-email'];
+      final isOnAuthPage = authPages.any(
+        (page) => state.matchedLocation.startsWith(page),
+      );
+
+      // Redirect to login if not authenticated and not on auth pages
+      if (!isAuthenticated && !isOnAuthPage) {
         return '/login';
       }
 
       // Redirect to dashboard if authenticated and on auth pages
-      if (isAuthenticated &&
-          (state.matchedLocation == '/login' ||
-              state.matchedLocation == '/register' ||
-              state.matchedLocation == '/')) {
+      if (isAuthenticated && isOnAuthPage) {
         return '/dashboard';
       }
 
@@ -47,6 +51,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/verify-email',
+        builder: (context, state) {
+          final email = state.uri.queryParameters['email'] ?? '';
+          return EmailVerificationScreen(email: email);
+        },
       ),
       GoRoute(
         path: '/dashboard',

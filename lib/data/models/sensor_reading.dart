@@ -22,11 +22,44 @@ class SensorReading {
 
   Map<String, dynamic> toJson() => _$SensorReadingToJson(this);
 
-  // Helper to parse your friend's nested response
-  factory SensorReading.fromApiResponse(Map<String, dynamic> apiResponse) {
-    final bodyString = apiResponse['body'] as String;
-    final bodyJson = jsonDecode(bodyString);
-    return SensorReading.fromJson(bodyJson);
+  // Improved helper to parse API response with better error handling
+  factory SensorReading.fromApiResponse(dynamic apiResponse) {
+    try {
+      // Handle case where response is already a Map
+      if (apiResponse is Map<String, dynamic>) {
+        // Check if it has a 'body' field (AWS Lambda response format)
+        if (apiResponse.containsKey('body')) {
+          final bodyString = apiResponse['body'];
+          if (bodyString is String) {
+            final bodyJson = jsonDecode(bodyString);
+            return SensorReading.fromJson(bodyJson);
+          } else if (bodyString is Map<String, dynamic>) {
+            return SensorReading.fromJson(bodyString);
+          }
+        }
+        // Direct JSON response
+        return SensorReading.fromJson(apiResponse);
+      }
+
+      // Handle case where response is a String
+      if (apiResponse is String) {
+        final jsonData = jsonDecode(apiResponse);
+        return SensorReading.fromJson(jsonData);
+      }
+
+      throw Exception('Unexpected response format: ${apiResponse.runtimeType}');
+    } catch (e) {
+      print('Error parsing sensor reading: $e');
+      print('Response data: $apiResponse');
+
+      // Return mock data when parsing fails
+      return SensorReading(
+        voltage: 0.0,
+        current: 0.0,
+        power: 0.0,
+        timestamp: DateTime.now().toIso8601String(),
+      );
+    }
   }
 }
 

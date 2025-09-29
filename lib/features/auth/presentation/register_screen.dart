@@ -37,25 +37,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       if (next.error != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.error!)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.error!), backgroundColor: Colors.red),
+        );
         ref.read(authControllerProvider.notifier).clearError();
       }
 
-      // Registration successful, show success message
+      // Registration successful, navigate to email verification
       if (!next.isLoading &&
           next.error == null &&
+          next.requiresEmailVerification &&
+          next.pendingEmail != null &&
           previous?.isLoading == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Registration successful! Please verify your email and login.',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-        context.go('/login');
+        context.go('/email-verification', extra: next.pendingEmail);
       }
     });
 
