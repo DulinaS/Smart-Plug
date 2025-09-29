@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../data/repositories/analytics_repo.dart';
+import '../../../data/repositories/auth_repo.dart';
+import '../../../data/repositories/device_repo.dart';
+import '../../../data/repositories/schedule_repo.dart';
 import '../../auth/application/auth_controller.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -56,6 +60,13 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
+            Divider(),
+            ListTile(
+              title: Text('API Integration Tests'),
+              subtitle: Text('Test backend connectivity'),
+            ),
+            _buildTestButtons(context, ref),
+            Divider(),
           ],
 
           // Account Settings
@@ -339,6 +350,223 @@ class SettingsScreen extends ConsumerWidget {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  //TEST BUTTONS
+  Widget _buildTestButtons(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ElevatedButton(
+            onPressed: () async {
+              print('=== STARTING AUTH TEST ===');
+              final authRepo = ref.read(authRepositoryProvider);
+
+              try {
+                print('Testing signup...');
+                final result = await authRepo.signUp(
+                  'test${DateTime.now().millisecondsSinceEpoch}@dulina.com',
+                  'TestPass123!',
+                  'Test User',
+                );
+                print('SUCCESS: $result');
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Success: ${result['message']}')),
+                );
+              } catch (e) {
+                print('FAILED: $e');
+                print('Stack trace: ${StackTrace.current}');
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed: $e'),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+            },
+            child: Text('Test Auth Now'),
+          ),
+          SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => _testDeviceData(context, ref),
+            child: Text('Test Device Data'),
+          ),
+          SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => _testSchedules(context, ref),
+            child: Text('Test Schedules'),
+          ),
+          SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => _testAnalytics(context, ref),
+            child: Text('Test Analytics'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testAuth(BuildContext context, WidgetRef ref) async {
+    final authRepo = ref.read(authRepositoryProvider);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Testing...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final result = await authRepo.signUp(
+        'test${DateTime.now().millisecondsSinceEpoch}@test.com',
+        'TestPass123!',
+        'Test User',
+      );
+
+      Navigator.pop(context);
+      _showResult(
+        context,
+        'Auth Test',
+        'Success: User registered\n${result['message']}',
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      _showResult(context, 'Auth Test', 'Error: $e');
+    }
+  }
+
+  Future<void> _testDeviceData(BuildContext context, WidgetRef ref) async {
+    final deviceRepo = ref.read(deviceRepositoryProvider);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Testing...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final reading = await deviceRepo.getLatestReading();
+
+      Navigator.pop(context);
+      _showResult(
+        context,
+        'Device Data Test',
+        'Success!\n\n'
+            'Voltage: ${reading.voltage}V\n'
+            'Current: ${reading.current}A\n'
+            'Power: ${reading.power}W\n'
+            'Time: ${reading.timestamp}',
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      _showResult(context, 'Device Data Test', 'Error: $e');
+    }
+  }
+
+  Future<void> _testSchedules(BuildContext context, WidgetRef ref) async {
+    final scheduleRepo = ref.read(scheduleRepositoryProvider);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Testing...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final schedules = await scheduleRepo.getSchedules('LivingRoomESP32');
+
+      Navigator.pop(context);
+      _showResult(
+        context,
+        'Schedule Test',
+        'Success!\n\nFound ${schedules.length} schedules',
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      _showResult(context, 'Schedule Test', 'Error: $e');
+    }
+  }
+
+  Future<void> _testAnalytics(BuildContext context, WidgetRef ref) async {
+    final analyticsRepo = ref.read(analyticsRepositoryProvider);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Testing...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final summary = await analyticsRepo.getUsageSummary(
+        'LivingRoomESP32',
+        'today',
+      );
+
+      Navigator.pop(context);
+      _showResult(
+        context,
+        'Analytics Test',
+        'Success!\n\n'
+            'Energy: ${summary.totalEnergy.toStringAsFixed(2)} kWh\n'
+            'Cost: Rs. ${summary.totalCost.toStringAsFixed(2)}\n'
+            'Avg Power: ${summary.avgPower.toStringAsFixed(1)}W',
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      _showResult(context, 'Analytics Test', 'Error: $e');
+    }
+  }
+
+  void _showResult(BuildContext context, String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK'),
           ),
         ],
       ),

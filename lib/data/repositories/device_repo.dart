@@ -10,11 +10,10 @@ class DeviceRepository {
 
   DeviceRepository(this._httpClient);
 
-  // Get latest sensor reading from your friend's API
   Future<SensorReading> getLatestReading() async {
     try {
       final response = await _httpClient.dio.get(
-        AppConfig.latestReadingEndpoint,
+        '${AppConfig.dataBaseUrl}/latest',
       );
       return SensorReading.fromApiResponse(response.data);
     } on DioException catch (e) {
@@ -22,34 +21,89 @@ class DeviceRepository {
     }
   }
 
-  // Send control command to device
   Future<void> toggleDevice(String deviceId, bool turnOn) async {
     try {
-      final command = DeviceCommand(command: turnOn ? 'ON' : 'OFF');
       await _httpClient.dio.post(
-        AppConfig.controlEndpoint,
-        data: command.toJson(),
+        '${AppConfig.controlBaseUrl}/command',
+        data: {'deviceId': deviceId, 'command': turnOn ? 'ON' : 'OFF'},
       );
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  // Mock methods for screens that need device list (update when friend provides APIs)
+  Future<void> addDevice(String deviceId, String name, String room) async {
+    try {
+      await _httpClient.dio.post(
+        '${AppConfig.deviceBaseUrl}/add-device',
+        data: {
+          'deviceId': deviceId,
+          'name': name,
+          'room': room,
+          'config': {
+            'maxCurrent': 16.0,
+            'maxPower': 3680.0,
+            'safetyEnabled': true,
+            'reportInterval': 5,
+          },
+        },
+      );
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<void> updateDevice(
+    String deviceId, {
+    String? name,
+    String? room,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'deviceId': deviceId,
+        'config': {
+          'maxCurrent': 16.0,
+          'maxPower': 3680.0,
+          'safetyEnabled': true,
+          'reportInterval': 5,
+        },
+      };
+
+      if (name != null) data['name'] = name;
+      if (room != null) data['room'] = room;
+
+      await _httpClient.dio.put(
+        '${AppConfig.deviceBaseUrl}/update-device',
+        data: data,
+      );
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<void> deleteDevice(String deviceId) async {
+    try {
+      await _httpClient.dio.delete(
+        '${AppConfig.deviceBaseUrl}/delete-device',
+        data: {'deviceId': deviceId},
+      );
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   Future<List<Device>> getDevices() async {
     try {
-      // Get latest reading to create a mock device
       final reading = await getLatestReading();
 
-      // Create a mock device with real sensor data
       final device = Device(
-        id: 'esp32-device-001',
+        id: 'LivingRoomESP32',
         name: 'Smart Plug Device',
         room: 'Living Room',
         status: DeviceExtensions.statusFromSensorReading(reading),
         lastSeen: DateTime.parse(reading.timestamp),
         firmwareVersion: 'v1.0.0',
-        isOnline: true, // Device is online if we got recent data
+        isOnline: true,
         config: const DeviceConfig(
           maxCurrent: 16.0,
           maxPower: 3680.0,
@@ -60,52 +114,49 @@ class DeviceRepository {
 
       return [device];
     } catch (e) {
-      // Return empty list if API fails
-      return [];
+      final mockReading = SensorReading(
+        voltage: 230.5,
+        current: 2.1,
+        power: 484.05,
+        timestamp: DateTime.now().toIso8601String(),
+      );
+
+      final mockDevice = Device(
+        id: 'LivingRoomESP32',
+        name: 'Smart Plug (Demo)',
+        room: 'Living Room',
+        status: DeviceExtensions.statusFromSensorReading(mockReading),
+        lastSeen: DateTime.now(),
+        firmwareVersion: 'v1.0.0',
+        isOnline: false,
+        config: const DeviceConfig(
+          maxCurrent: 16.0,
+          maxPower: 3680.0,
+          safetyEnabled: true,
+          reportInterval: 5,
+        ),
+      );
+
+      return [mockDevice];
     }
   }
 
   Future<Device> getDevice(String deviceId) async {
     final devices = await getDevices();
-    final device = devices.firstWhere(
+    return devices.firstWhere(
       (d) => d.id == deviceId,
       orElse: () => throw Exception('Device not found'),
     );
-    return device;
-  }
-
-  // Placeholder methods (implement when friend provides APIs)
-  Future<Device> addDevice(String deviceId, String deviceSecret) async {
-    // TODO: Implement when friend provides device registration API
-    throw UnimplementedError('Device registration API not yet available');
-  }
-
-  Future<void> updateDevice(
-    String deviceId, {
-    String? name,
-    String? room,
-  }) async {
-    // TODO: Implement when friend provides device update API
-    throw UnimplementedError('Device update API not yet available');
-  }
-
-  Future<void> deleteDevice(String deviceId) async {
-    // TODO: Implement when friend provides device deletion API
-    throw UnimplementedError('Device deletion API not yet available');
   }
 
   String _handleError(DioException e) {
-    if (e.response?.statusCode == 404) {
-      return 'Device not found';
-    } else if (e.response?.statusCode == 403) {
-      return 'Access denied';
-    } else if (e.type == DioExceptionType.connectionTimeout) {
-      return 'Connection timeout - check your internet';
-    } else if (e.type == DioExceptionType.receiveTimeout) {
+    if (e.response?.statusCode == 404) return 'Device not found';
+    if (e.response?.statusCode == 403) return 'Access denied';
+    if (e.type == DioExceptionType.connectionTimeout)
+      return 'Connection timeout';
+    if (e.type == DioExceptionType.receiveTimeout)
       return 'Device not responding';
-    } else {
-      return 'Device operation failed: ${e.message}';
-    }
+    return 'Device operation failed';
   }
 }
 

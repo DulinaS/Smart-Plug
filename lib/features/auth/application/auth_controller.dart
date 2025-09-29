@@ -67,12 +67,27 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> register(String email, String password, String username) async {
+  Future<void> register(String email, String password, String fullName) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _authRepository.register(email, password, username);
+      await _authRepository.signUp(email, password, fullName);
       state = state.copyWith(isLoading: false);
       // User needs to verify email before logging in
+    } catch (e) {
+      state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
+  // ALSO ADD THIS METHOD for email confirmation:
+  Future<void> confirmEmail(String email, String code) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final confirmed = await _authRepository.confirmSignUp(email, code);
+      if (confirmed) {
+        state = state.copyWith(isLoading: false);
+      } else {
+        state = state.copyWith(error: 'Verification failed', isLoading: false);
+      }
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
@@ -98,7 +113,7 @@ class AuthController extends StateNotifier<AuthState> {
       id: 'mock-user-123',
       email: 'dulina@gmail.com',
       username: 'testuser',
-      displayName: 'Test User',
+      displayName: 'Dulina User',
       createdAt: DateTime.now(),
     );
 
