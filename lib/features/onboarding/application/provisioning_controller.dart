@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:smart_plug/core/services/provisioning_service.dart';
 import 'package:smart_plug/data/repositories/device_repo.dart';
+import 'package:smart_plug/core/config/env.dart'; // ADDED
 
 enum ProvisioningStep {
   pickMethod,
@@ -79,12 +80,8 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
   final ProvisioningService _prov;
   final DeviceRepository _devices;
 
-  // IMPORTANT: Set this to your backend host. Pulled from your logs for now.
-  // Prefer moving to a central config and injecting here later.
-  static const String kCloudApiHost =
-      'glpv8i3uvc.execute-api.us-east-1.amazonaws.com';
-
-  // UI actions
+  // Preflight the SAME host that add-device will use
+  static final String _deviceApiHost = Uri.parse(AppConfig.deviceBaseUrl).host;
 
   void pickMethod(String method) {
     state = state.copyWith(
@@ -187,15 +184,13 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
   }
 
   Future<void> waitAndRegister() async {
-    // 1) Poll the device until connected (while AP is still up)
     state = state.copyWith(
       busy: true,
       message: 'Verifying device is online...',
     );
     late final StatusResult result;
     try {
-      result = await _prov
-          .waitForStatus(); // resolves on "connected" or "error"
+      result = await _prov.waitForStatus();
     } catch (e) {
       state = state.copyWith(
         step: ProvisioningStep.error,
@@ -214,17 +209,15 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
       return;
     }
 
-    // 2) Finalize: tell device to turn AP off (may error as networks switch)
     try {
       await _prov.finalizeDevice();
     } catch (e) {
       debugPrint('Finalize failed (non-fatal): $e');
     }
 
-    // 3) Wait for the phone to restore internet AND DNS for your backend host
     state = state.copyWith(message: 'Restoring internet connection...');
     final online = await _waitForInternetAndDns(
-      kCloudApiHost,
+      _deviceApiHost,
       timeout: const Duration(seconds: 60),
     );
     if (!online) {
@@ -237,7 +230,6 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
       return;
     }
 
-    // 4) Register device in backend (retry with backoff)
     final id = result.deviceId ?? state.deviceId ?? _fallbackDeviceId();
     state = state.copyWith(
       step: ProvisioningStep.registeringDevice,
@@ -274,7 +266,7 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
 
   Future<void> reprovision() async {
     try {
-      await _prov.reprovisionAp(); // turn AP back on without clearing creds
+      await _prov.reprovisionAp();
       state = state.copyWith(
         step: ProvisioningStep.connectToDeviceAP,
         message: 'Device AP is on. Reconnect and continue.',
@@ -289,7 +281,7 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
 
   Future<void> factoryReset() async {
     try {
-      await _prov.resetDevice(); // clear creds and turn AP on
+      await _prov.resetDevice();
       state = state.copyWith(
         step: ProvisioningStep.connectToDeviceAP,
         message: 'Device reset. Connect to AP to set up again.',
@@ -306,9 +298,6 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
     state = ProvisioningState.initial();
   }
 
-  // Helpers
-
-  // Wait for connectivity + a tiny HTTPS probe AND confirm DNS resolves for host.
   Future<bool> _waitForInternetAndDns(
     String host, {
     required Duration timeout,
@@ -327,21 +316,16 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
       final hasLink = type != ConnectivityResult.none;
 
       if (hasLink) {
-        // 1) Try a fast probe that returns 204
         try {
           await dio.get('https://www.google.com/generate_204');
         } catch (_) {
           await Future.delayed(const Duration(seconds: 2));
-          continue; // still not online
+          continue;
         }
-
-        // 2) Ensure DNS works for the backend host
         try {
           final addrs = await InternetAddress.lookup(host);
           if (addrs.isNotEmpty) return true;
-        } catch (_) {
-          // DNS still not ready; keep waiting
-        }
+        } catch (_) {}
       }
       await Future.delayed(const Duration(seconds: 2));
     }
@@ -352,7 +336,6 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
       'SmartPlug-${DateTime.now().millisecondsSinceEpoch}';
 }
 
-// Provider wiring
 final provisioningControllerProvider =
     StateNotifierProvider<ProvisioningController, ProvisioningState>((ref) {
       final service = ref.read(provisioningServiceProvider);

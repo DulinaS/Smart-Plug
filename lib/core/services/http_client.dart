@@ -10,7 +10,7 @@ class HttpClient {
   HttpClient(this._secureStore) {
     _dio = Dio(
       BaseOptions(
-        baseUrl: AppConfig.apiBaseUrl,
+        baseUrl: AppConfig.apiBaseUrl, // repos mostly use full URLs
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
       ),
@@ -26,15 +26,15 @@ class HttpClient {
           handler.next(options);
         },
         onError: (error, handler) async {
-          if (error.response?.statusCode == 401) {
-            // Token expired, try to refresh
-            await _refreshToken();
-            // Retry the request
-            final options = error.requestOptions;
-            final token = await _secureStore.getAuthToken();
-            options.headers['Authorization'] = 'Bearer $token';
-            final response = await _dio.fetch(options);
-            handler.resolve(response);
+          // Guard against infinite loop while refresh is unimplemented
+          final alreadyRetried = error.requestOptions.extra['ret'] == true;
+
+          if (error.response?.statusCode == 401 && !alreadyRetried) {
+            error.requestOptions.extra['ret'] = true;
+
+            // TODO: implement refresh using _secureStore.getRefreshToken()
+            // For now, do not retry blindly; just pass the error through.
+            return handler.next(error);
           } else {
             handler.next(error);
           }
@@ -44,7 +44,7 @@ class HttpClient {
   }
 
   Future<void> _refreshToken() async {
-    // Implement token refresh logic
+    // Implement token refresh logic if your auth service supports it.
   }
 
   Dio get dio => _dio;
