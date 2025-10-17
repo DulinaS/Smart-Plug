@@ -1,131 +1,231 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smart_plug/core/services/provisioning_service.dart';
+import 'package:smart_plug/data/repositories/device_repo.dart';
 
 enum ProvisioningStep {
-  connecting,
+  pickMethod,
+  connectToDeviceAP,
+  enterWifiCredentials,
   sendingCredentials,
-  deviceConnecting,
-  cloudRegistration,
-  finalizing,
+  waitingForDevice,
+  registeringDevice,
+  success,
+  error,
 }
 
 class ProvisioningState {
-  final ProvisioningStep currentStep;
-  final double progress;
-  final bool isCompleted;
-  final bool hasError;
-  final String? error;
-  final bool isLoading;
+  final ProvisioningStep step;
+  final String? selectedMethod;
+  final String? ssid;
+  final String? password;
+  final String? deviceName;
+  final String? room;
+  final String? deviceId;
+  final String? message;
+  final bool busy;
 
   const ProvisioningState({
-    this.currentStep = ProvisioningStep.connecting,
-    this.progress = 0.0,
-    this.isCompleted = false,
-    this.hasError = false,
-    this.error,
-    this.isLoading = false,
+    required this.step,
+    this.selectedMethod,
+    this.ssid,
+    this.password,
+    this.deviceName,
+    this.room,
+    this.deviceId,
+    this.message,
+    this.busy = false,
   });
 
   ProvisioningState copyWith({
-    ProvisioningStep? currentStep,
-    double? progress,
-    bool? isCompleted,
-    bool? hasError,
-    String? error,
-    bool? isLoading,
+    ProvisioningStep? step,
+    String? selectedMethod,
+    String? ssid,
+    String? password,
+    String? deviceName,
+    String? room,
+    String? deviceId,
+    String? message,
+    bool? busy,
   }) {
     return ProvisioningState(
-      currentStep: currentStep ?? this.currentStep,
-      progress: progress ?? this.progress,
-      isCompleted: isCompleted ?? this.isCompleted,
-      hasError: hasError ?? this.hasError,
-      error: error,
-      isLoading: isLoading ?? this.isLoading,
+      step: step ?? this.step,
+      selectedMethod: selectedMethod ?? this.selectedMethod,
+      ssid: ssid ?? this.ssid,
+      password: password ?? this.password,
+      deviceName: deviceName ?? this.deviceName,
+      room: room ?? this.room,
+      deviceId: deviceId ?? this.deviceId,
+      message: message ?? this.message,
+      busy: busy ?? this.busy,
     );
   }
+
+  static ProvisioningState initial() =>
+      const ProvisioningState(step: ProvisioningStep.pickMethod);
 }
 
 class ProvisioningController extends StateNotifier<ProvisioningState> {
-  ProvisioningController() : super(const ProvisioningState());
+  ProvisioningController(this._provisioning, this._devices)
+    : super(ProvisioningState.initial());
 
-  Future<void> startWiFiSetup({
-    required String ssid,
-    required String password,
-    required String deviceName,
-  }) async {
-    state = state.copyWith(isLoading: true, hasError: false);
+  final ProvisioningService _provisioning;
+  final DeviceRepository _devices;
 
-    try {
-      // Step 1: Connect to device
-      await _updateStep(ProvisioningStep.connecting, 0.2);
-      await _simulateConnection();
-
-      // Step 2: Send WiFi credentials
-      await _updateStep(ProvisioningStep.sendingCredentials, 0.4);
-      await _sendCredentials(ssid, password);
-
-      // Step 3: Device connects to WiFi
-      await _updateStep(ProvisioningStep.deviceConnecting, 0.6);
-      await _waitForDeviceConnection();
-
-      // Step 4: Register with cloud
-      await _updateStep(ProvisioningStep.cloudRegistration, 0.8);
-      await _registerWithCloud(deviceName);
-
-      // Step 5: Finalize
-      await _updateStep(ProvisioningStep.finalizing, 1.0);
-      await _finalizeSetup();
-
-      state = state.copyWith(isCompleted: true, isLoading: false);
-    } catch (e) {
+  void pickMethod(String method) {
+    state = state.copyWith(selectedMethod: method);
+    if (method == 'softap') {
+      state = state.copyWith(step: ProvisioningStep.connectToDeviceAP);
+    } else {
       state = state.copyWith(
-        hasError: true,
-        error: e.toString(),
-        isLoading: false,
+        step: ProvisioningStep.error,
+        message: 'Only SoftAP is implemented in this version.',
       );
     }
   }
 
-  Future<void> _updateStep(ProvisioningStep step, double progress) async {
-    state = state.copyWith(currentStep: step, progress: progress);
-    // Simulate time for each step
-    await Future.delayed(const Duration(seconds: 2));
+  Future<void> connectToAp({
+    required String deviceSsid,
+    String? deviceApPassword,
+  }) async {
+    state = state.copyWith(
+      busy: true,
+      message: 'Requesting OS to join $deviceSsid...',
+    );
+    final ok = await _provisioning.connectToDeviceAp(
+      ssid: deviceSsid,
+      password: deviceApPassword,
+    );
+    if (!ok) {
+      state = state.copyWith(
+        busy: false,
+        message: 'Could not start Wi‑Fi join. Use Wi‑Fi settings instead.',
+      );
+      return;
+    }
+    final reachable = await _provisioning.pingDeviceAP();
+    state = state.copyWith(
+      busy: false,
+      message: reachable
+          ? 'Device hotspot detected.'
+          : 'Device hotspot not reachable yet. Try again or use Wi‑Fi settings.',
+      step: reachable
+          ? ProvisioningStep.enterWifiCredentials
+          : ProvisioningStep.connectToDeviceAP,
+    );
   }
 
-  Future<void> _simulateConnection() async {
-    // TODO: Replace with actual device connection logic
-    // This would connect to ESP32's WiFi hotspot or BLE
-    await Future.delayed(const Duration(seconds: 2));
+  Future<void> verifyDeviceAP() async {
+    state = state.copyWith(busy: true, message: 'Checking device hotspot...');
+    final ok = await _provisioning.pingDeviceAP();
+    state = state.copyWith(
+      busy: false,
+      message: ok
+          ? 'Device hotspot detected.'
+          : 'Device hotspot not reachable. Connect and try again.',
+      step: ok
+          ? ProvisioningStep.enterWifiCredentials
+          : ProvisioningStep.connectToDeviceAP,
+    );
   }
 
-  Future<void> _sendCredentials(String ssid, String password) async {
-    // TODO: Replace with actual credential sending
-    // This would send WiFi SSID and password to ESP32
-    await Future.delayed(const Duration(seconds: 3));
+  void setWifiCredentials({required String ssid, required String password}) {
+    state = state.copyWith(ssid: ssid, password: password);
   }
 
-  Future<void> _waitForDeviceConnection() async {
-    // TODO: Replace with actual device monitoring
-    // This would wait for ESP32 to connect to user's WiFi
-    await Future.delayed(const Duration(seconds: 5));
+  void setMetadata({String? deviceName, String? room}) {
+    state = state.copyWith(deviceName: deviceName, room: room);
   }
 
-  Future<void> _registerWithCloud(String deviceName) async {
-    // TODO: Replace with actual cloud registration
-    // This would register the device with your friend's backend
-    await Future.delayed(const Duration(seconds: 3));
+  Future<void> submitCredentials({String? mqttEndpoint}) async {
+    if (state.ssid == null || state.password == null) {
+      state = state.copyWith(
+        step: ProvisioningStep.error,
+        message: 'Please provide Wi‑Fi SSID and password.',
+      );
+      return;
+    }
+    state = state.copyWith(
+      step: ProvisioningStep.sendingCredentials,
+      busy: true,
+      message: 'Sending credentials to device...',
+    );
+    try {
+      await _provisioning.sendWifiCredentials(
+        ssid: state.ssid!,
+        password: state.password!,
+        mqttEndpoint: mqttEndpoint,
+        deviceIdHint: state.deviceId,
+      );
+      state = state.copyWith(
+        step: ProvisioningStep.waitingForDevice,
+        busy: false,
+        message: 'Waiting for device to join your Wi‑Fi...',
+      );
+    } catch (e) {
+      state = state.copyWith(
+        step: ProvisioningStep.error,
+        busy: false,
+        message: 'Failed to send credentials: $e',
+      );
+    }
   }
 
-  Future<void> _finalizeSetup() async {
-    // TODO: Final setup steps
-    await Future.delayed(const Duration(seconds: 1));
+  Future<void> waitAndRegister() async {
+    state = state.copyWith(
+      busy: true,
+      message: 'Verifying device is online...',
+    );
+    final result = await _provisioning.waitForStatus();
+    if (!result.connected) {
+      state = state.copyWith(
+        step: ProvisioningStep.error,
+        busy: false,
+        message: result.message ?? 'Provisioning failed',
+      );
+      return;
+    }
+
+    // NEW: finalize AP shutdown once connected (firmware /finalize)
+    await _provisioning.finalizeDevice();
+
+    final id =
+        result.deviceId ??
+        state.deviceId ??
+        'SmartPlug-${DateTime.now().millisecondsSinceEpoch}';
+    state = state.copyWith(
+      step: ProvisioningStep.registeringDevice,
+      message: 'Registering device...',
+      deviceId: id,
+    );
+
+    try {
+      await _devices.addDevice(
+        id,
+        state.deviceName ?? 'Smart Plug',
+        state.room ?? 'Living Room',
+      );
+      state = state.copyWith(
+        step: ProvisioningStep.success,
+        busy: false,
+        message: 'Device added successfully',
+      );
+    } catch (e) {
+      state = state.copyWith(
+        step: ProvisioningStep.error,
+        busy: false,
+        message: 'Backend registration failed: $e',
+      );
+    }
   }
 
-  void cancelProvisioning() {
-    state = const ProvisioningState();
+  void reset() {
+    state = ProvisioningState.initial();
   }
 }
 
 final provisioningControllerProvider =
     StateNotifierProvider<ProvisioningController, ProvisioningState>((ref) {
-      return ProvisioningController();
+      final service = ProvisioningService();
+      final devices = ref.read(deviceRepositoryProvider);
+      return ProvisioningController(service, devices);
     });
