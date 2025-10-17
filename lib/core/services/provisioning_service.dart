@@ -1,143 +1,234 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:wifi_iot/wifi_iot.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Handles SoftAP provisioning flow by talking to the device's temporary hotspot.
+// Optional: automatic AP connect on Android via wifi_iot
+// Add wifi_iot to pubspec.yaml to use this path. If unavailable, connectToAp will no-op gracefully.
+import 'package:wifi_iot/wifi_iot.dart' as wifi_iot;
+
+/// Riverpod provider
+final provisioningServiceProvider = Provider<ProvisioningService>(
+  (ref) => ProvisioningService(),
+);
+
+/// Result returned by waitForStatus/getStatus
+@immutable
+class StatusResult {
+  final bool connected;
+  final String state; // "connected", "connecting", "ap", "waiting", "error"
+  final String? deviceId;
+  final String? message;
+  final String? ssid;
+  final String? bssid;
+  final String? ip;
+  final int? rssi;
+  final int? channel;
+  final Map<String, dynamic>? raw;
+
+  const StatusResult({
+    required this.connected,
+    required this.state,
+    this.deviceId,
+    this.message,
+    this.ssid,
+    this.bssid,
+    this.ip,
+    this.rssi,
+    this.channel,
+    this.raw,
+  });
+
+  factory StatusResult.fromJson(Map<String, dynamic> json) {
+    final state = (json['state'] as String?) ?? 'waiting';
+    return StatusResult(
+      connected: state == 'connected',
+      state: state,
+      deviceId: json['deviceId'] as String?,
+      message: json['message'] as String?,
+      ssid: json['ssid'] as String?,
+      bssid: json['bssid'] as String?,
+      ip: json['ip'] as String?,
+      rssi: (json['rssi'] is num) ? (json['rssi'] as num).toInt() : null,
+      channel: (json['channel'] is num)
+          ? (json['channel'] as num).toInt()
+          : null,
+      raw: json,
+    );
+  }
+}
+
 class ProvisioningService {
-  ProvisioningService({Dio? dio})
+  ProvisioningService({this.deviceApBaseUrl = 'http://192.168.4.1', Dio? dio})
     : _dio =
           dio ??
           Dio(
             BaseOptions(
-              baseUrl: 'http://192.168.4.1',
               connectTimeout: const Duration(seconds: 4),
               receiveTimeout: const Duration(seconds: 4),
-              contentType: Headers.jsonContentType,
             ),
           );
 
+  /// Base URL of the device while in AP (SoftAP) mode
+  final String deviceApBaseUrl;
+
   final Dio _dio;
 
-  /// Try to join the device hotspot from inside the app.
-  /// Returns true if the OS accepted and switched to the SSID (may still take a moment to get IP).
-  Future<bool> connectToDeviceAp({
-    required String ssid,
-    String? password,
-    bool withInternet = false, // SoftAPs typically have no internet
+  Uri _u(String path) => Uri.parse('$deviceApBaseUrl$path');
+
+  // ---------- Auto-connect to device AP (best-effort) ----------
+
+  /// Attempts to connect to the device hotspot (Android only).
+  /// If the plugin is not available or platform is unsupported, this is a no-op that returns false.
+  Future<bool> connectToAp({
+    required String deviceSsid,
+    String? deviceApPassword,
   }) async {
     try {
-      final security = (password != null && password.isNotEmpty)
-          ? NetworkSecurity.WPA
-          : NetworkSecurity.NONE;
+      if (!Platform.isAndroid) return false;
 
-      final ok = await WiFiForIoTPlugin.connect(
-        ssid,
-        password: password,
+      // If already connected to the target SSID, return
+      final current = await wifi_iot.WiFiForIoTPlugin.getSSID();
+      if ((current ?? '').replaceAll('"', '') == deviceSsid) {
+        return true;
+      }
+
+      final success = await wifi_iot.WiFiForIoTPlugin.connect(
+        deviceSsid,
+        password: deviceApPassword,
+        security: (deviceApPassword == null || deviceApPassword.isEmpty)
+            ? wifi_iot.NetworkSecurity.NONE
+            : wifi_iot.NetworkSecurity.WPA,
         joinOnce: true,
-        withInternet: withInternet,
-        security: security,
+        withInternet: false,
+        isHidden: false,
       );
 
-      if (ok == true) {
-        await Future.delayed(const Duration(seconds: 2));
+      if (!success) return false;
+
+      // Wait until SSID matches
+      final end = DateTime.now().add(const Duration(seconds: 20));
+      while (DateTime.now().isBefore(end)) {
+        final ssid = await wifi_iot.WiFiForIoTPlugin.getSSID();
+        if ((ssid ?? '').replaceAll('"', '') == deviceSsid) {
+          return true;
+        }
+        await Future.delayed(const Duration(seconds: 1));
       }
-      return ok == true;
     } catch (e) {
-      debugPrint('connectToDeviceAp error: $e');
-      return false;
+      debugPrint('connectToAp failed: $e');
     }
+    return false;
   }
 
-  /// Optionally read current SSID (may require platform/location toggles on some Android devices).
-  Future<String?> getCurrentSsid() async {
-    try {
-      return await WiFiForIoTPlugin.getSSID();
-    } catch (e) {
-      debugPrint('getCurrentSsid error: $e');
-      return null;
-    }
-  }
+  // ---------- Device HTTP APIs ----------
 
-  /// Pings the device AP to check that we’re connected to it.
-  Future<bool> pingDeviceAP() async {
+  Future<bool> pingDevice() async {
     try {
-      final resp = await _dio.get('/ping');
-      return resp.data is Map && (resp.data['ok'] == true);
-    } on DioException {
-      try {
-        final resp = await _dio.get(
-          '/provision',
-        ); // firmware includes this no-op too
-        return resp.statusCode == 200;
-      } catch (_) {
-        return false;
+      final res = await _dio.getUri(_u('/ping'));
+      if (res.statusCode == 200) {
+        final data = _asMap(res.data);
+        return data['ok'] == true;
       }
+    } catch (e) {
+      // ignore
     }
+    return false;
   }
 
-  /// Sends Wi‑Fi credentials for the home network to the device.
+  /// POST Wi‑Fi credentials to the device.
   Future<void> sendWifiCredentials({
     required String ssid,
     required String password,
-    String? region,
-    String? mqttEndpoint,
-    String? deviceIdHint,
   }) async {
-    await _dio.post(
-      '/config',
-      data: {
-        'ssid': ssid,
-        'password': password,
-        if (region != null) 'region': region,
-        if (mqttEndpoint != null) 'mqttEndpoint': mqttEndpoint,
-        if (deviceIdHint != null) 'deviceId': deviceIdHint,
-      },
+    final body = {'ssid': ssid, 'password': password};
+    final res = await _dio.postUri(
+      _u('/config'),
+      data: jsonEncode(body),
+      options: Options(headers: {'Content-Type': 'application/json'}),
     );
-  }
-
-  /// Tells the device to shut down AP and stay in STA mode after success.
-  Future<bool> finalizeDevice() async {
-    try {
-      final resp = await _dio.get('/finalize');
-      return resp.statusCode == 200 &&
-          (resp.data is Map ? resp.data['ok'] == true : true);
-    } catch (e) {
-      debugPrint('finalizeDevice error: $e');
-      return false;
+    if (res.statusCode != 200) {
+      throw Exception('Device rejected credentials (${res.statusCode})');
     }
   }
 
-  /// Poll provisioning status until connected or timeout.
-  /// Returns a tuple of (connected, deviceId, message).
-  Future<({bool connected, String? deviceId, String? message})> waitForStatus({
-    Duration timeout = const Duration(minutes: 2),
-    Duration interval = const Duration(seconds: 3),
+  /// Polls /status until state is 'connected' or 'error' or timeout.
+  Future<StatusResult> waitForStatus({
+    Duration timeout = const Duration(seconds: 45),
+    Duration pollEvery = const Duration(milliseconds: 1500),
   }) async {
     final end = DateTime.now().add(timeout);
+    StatusResult? last;
     while (DateTime.now().isBefore(end)) {
       try {
-        final resp = await _dio.get('/status');
-        if (resp.data is Map) {
-          final state = resp.data['state']?.toString().toLowerCase();
-          final msg = resp.data['message']?.toString();
-          final id = resp.data['deviceId']?.toString();
-          if (state == 'connected') {
-            return (connected: true, deviceId: id, message: msg);
-          }
-          if (state == 'error') {
-            return (connected: false, deviceId: id, message: msg ?? 'Error');
+        final res = await _dio.getUri(_u('/status'));
+        if (res.statusCode == 200) {
+          final data = _asMap(res.data);
+          final status = StatusResult.fromJson(data);
+          last = status;
+
+          // The firmware may send a one-shot "error" pulse; treat that as terminal failure
+          if (status.state == 'connected' || status.state == 'error') {
+            return status;
           }
         }
       } catch (e) {
-        debugPrint('Provisioning status check error: $e');
+        // Ignore transient failures while AP/STA transitions happen
       }
-      await Future.delayed(interval);
+      await Future.delayed(pollEvery);
     }
-    return (
-      connected: false,
-      deviceId: null,
-      message: 'Provisioning timed out',
-    );
+    return last ??
+        const StatusResult(
+          connected: false,
+          state: 'timeout',
+          message: 'Timed out waiting for device',
+        );
+  }
+
+  /// Tells device to turn AP off (STA only).
+  Future<void> finalizeDevice() async {
+    try {
+      await _dio.getUri(_u('/finalize'));
+    } catch (e) {
+      // Not fatal; the phone may be switching networks right now.
+      debugPrint('finalizeDevice error: $e');
+    }
+  }
+
+  /// Re-enable AP without clearing creds (AP+STA mode).
+  Future<void> reprovisionAp() async {
+    final res = await _dio.getUri(_u('/reprovision'));
+    if (res.statusCode != 200) {
+      throw Exception('Failed to re-enable AP (${res.statusCode})');
+    }
+  }
+
+  /// Clear saved Wi‑Fi credentials and start AP.
+  Future<void> resetDevice() async {
+    final res = await _dio.getUri(_u('/reset'));
+    if (res.statusCode != 200) {
+      throw Exception('Failed to reset device (${res.statusCode})');
+    }
+  }
+
+  /// Single read of /status (no waiting)
+  Future<StatusResult> getStatus() async {
+    final res = await _dio.getUri(_u('/status'));
+    if (res.statusCode != 200) {
+      throw Exception('Status fetch failed (${res.statusCode})');
+    }
+    return StatusResult.fromJson(_asMap(res.data));
+  }
+
+  // ---------- Helpers ----------
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is String && data.isNotEmpty)
+      return jsonDecode(data) as Map<String, dynamic>;
+    throw const FormatException('Malformed JSON');
   }
 }

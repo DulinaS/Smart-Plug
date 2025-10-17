@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:smart_plug/features/onboarding/application/provisioning_controller.dart';
 
 class AddDeviceScreen extends ConsumerStatefulWidget {
@@ -31,10 +32,32 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Add Smart Plug')),
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          child: _buildStep(context, state, ctrl),
+        child: Column(
+          children: [
+            if (state.message != null)
+              MaterialBanner(
+                content: Text(state.message!),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                    },
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: KeyedSubtree(
+                  key: ValueKey(state.step),
+                  child: _buildStep(context, state, ctrl),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -47,21 +70,30 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
   ) {
     switch (state.step) {
       case ProvisioningStep.pickMethod:
-        return _PickMethod(onSelect: (method) => ctrl.pickMethod(method));
+        return _PickMethod(onSelect: (m) => ctrl.pickMethod(m));
+
       case ProvisioningStep.connectToDeviceAP:
         return _ConnectAPStep(
           busy: state.busy,
           message: state.message,
-          onConnectAuto: () => _showConnectDialog(context, ctrl),
-          onVerify: ctrl.verifyDeviceAP,
+          onConnectAuto: () async {
+            FocusScope.of(context).unfocus();
+            await _showConnectDialog(context, ctrl);
+          },
+          onVerify: () async {
+            FocusScope.of(context).unfocus();
+            await ctrl.verifyDeviceAP();
+          },
         );
+
       case ProvisioningStep.enterWifiCredentials:
         return _CredentialsStep(
           ssidCtrl: _ssidCtrl,
           pwdCtrl: _pwdCtrl,
           nameCtrl: _nameCtrl,
           roomCtrl: _roomCtrl,
-          onNext: () {
+          onNext: () async {
+            FocusScope.of(context).unfocus();
             ctrl.setWifiCredentials(
               ssid: _ssidCtrl.text.trim(),
               password: _pwdCtrl.text,
@@ -70,38 +102,53 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
               deviceName: _nameCtrl.text.trim(),
               room: _roomCtrl.text.trim(),
             );
-            ctrl.submitCredentials();
+            await ctrl.submitCredentials();
           },
         );
+
       case ProvisioningStep.sendingCredentials:
-        return _ProgressStep(
+        return const _ProgressStep(
           title: 'Sending Wi‑Fi Credentials',
-          message: state.message ?? 'Please wait...',
+          message: 'Please wait...',
         );
+
       case ProvisioningStep.waitingForDevice:
         return _WaitingStep(
           message: state.message ?? 'Waiting for device...',
-          onContinue: ctrl.waitAndRegister,
           busy: state.busy,
+          onContinue: () async {
+            FocusScope.of(context).unfocus();
+            await ctrl.waitAndRegister();
+          },
         );
+
       case ProvisioningStep.registeringDevice:
-        return _ProgressStep(
+        return const _ProgressStep(
           title: 'Registering Device',
-          message: state.message ?? 'Adding to your account...',
+          message: 'Adding to your account...',
         );
+
       case ProvisioningStep.success:
         return _ResultStep(
           success: true,
           message: state.message ?? 'Device added!',
-          onFinish: () => Navigator.of(context).pop(),
-          onAddAnother: ctrl.reset,
+          onFinish: () => _goHome(context),
+          onAddAnother: () {
+            FocusScope.of(context).unfocus();
+            _clearFields();
+            ctrl.reset();
+          },
         );
+
       case ProvisioningStep.error:
         return _ResultStep(
           success: false,
           message: state.message ?? 'Something went wrong.',
-          onFinish: () => Navigator.of(context).pop(),
-          onRetry: ctrl.reset,
+          onFinish: () => _goHome(context),
+          onRetry: () {
+            FocusScope.of(context).unfocus();
+            ctrl.reset();
+          },
         );
     }
   }
@@ -119,13 +166,12 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Enter the device hotspot SSID. It may look like "SmartPlug‑1234".',
-            ),
+            const Text('Enter the device hotspot SSID (e.g., SmartPlug‑1234).'),
             const SizedBox(height: 12),
             TextField(
               controller: apSsidCtrl,
               decoration: const InputDecoration(labelText: 'Device SSID'),
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),
             TextField(
@@ -148,6 +194,7 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
               final pass = apPwdCtrl.text;
               Navigator.of(ctx).pop();
               if (ssid.isNotEmpty) {
+                FocusScope.of(context).unfocus();
                 await ctrl.connectToAp(
                   deviceSsid: ssid,
                   deviceApPassword: pass.isEmpty ? null : pass,
@@ -159,14 +206,40 @@ class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
         ],
       ),
     );
-    apSsidCtrl.dispose();
-    apPwdCtrl.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      apSsidCtrl.dispose();
+      apPwdCtrl.dispose();
+    });
+  }
+
+  void _clearFields() {
+    _ssidCtrl.clear();
+    _pwdCtrl.clear();
+    _nameCtrl.text = 'Smart Plug';
+    _roomCtrl.text = 'Living Room';
+  }
+
+  void _goHome(BuildContext context) {
+    FocusScope.of(context).unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Prefer replacing the stack to avoid "popped last page" assertions.
+      try {
+        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      } catch (_) {
+        // If '/' is not registered, try maybePop; if cannot pop, do nothing.
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).maybePop();
+        }
+      }
+    });
   }
 }
 
+// ---------------- UI widgets ----------------
+
 class _PickMethod extends StatelessWidget {
   const _PickMethod({required this.onSelect});
-  final void Function(String method) onSelect;
+  final void Function(String) onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +252,7 @@ class _PickMethod extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Put your plug into pairing mode (hold the button until LED blinks).',
+          'Put your plug into pairing mode (hold the button until the LED blinks).',
         ),
         const SizedBox(height: 24),
         _MethodCard(
@@ -193,15 +266,7 @@ class _PickMethod extends StatelessWidget {
           title: 'Bluetooth (BLE)',
           subtitle: 'Pair over BLE. Coming soon.',
           icon: Icons.bluetooth,
-          onTap: () => onSelect('ble'),
-          disabled: true,
-        ),
-        const SizedBox(height: 12),
-        _MethodCard(
-          title: 'Manual',
-          subtitle: 'Enter details manually. Coming soon.',
-          icon: Icons.edit,
-          onTap: () => onSelect('manual'),
+          onTap: () {},
           disabled: true,
         ),
       ],
@@ -217,6 +282,7 @@ class _MethodCard extends StatelessWidget {
     required this.onTap,
     this.disabled = false,
   });
+
   final String title;
   final String subtitle;
   final IconData icon;
@@ -245,6 +311,7 @@ class _ConnectAPStep extends StatelessWidget {
     required this.onConnectAuto,
     required this.onVerify,
   });
+
   final bool busy;
   final String? message;
   final Future<void> Function() onConnectAuto;
@@ -261,7 +328,7 @@ class _ConnectAPStep extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Use “Connect automatically” to stay in the app. If it fails, use Wi‑Fi settings.',
+          'Use “Connect automatically” to stay in the app. If it fails, open Wi‑Fi settings and connect manually.',
         ),
         const SizedBox(height: 16),
         ElevatedButton.icon(
@@ -271,26 +338,6 @@ class _ConnectAPStep extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          icon: const Icon(Icons.settings),
-          label: const Text('Open Wi‑Fi Settings'),
-          // Fallback: open Settings via system UI (from earlier version). We reuse verify after returning.
-          onPressed: busy
-              ? null
-              : () async {
-                  // Let users switch manually; they come back and press Verify.
-                  // We don’t open settings here to keep this file decoupled; your older service can still handle it.
-                  final snack = ScaffoldMessenger.of(context);
-                  snack.showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Please open Wi‑Fi settings manually and return to the app.',
-                      ),
-                    ),
-                  );
-                },
-        ),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
           icon: const Icon(Icons.check_circle_outline),
           label: const Text('I am connected to the device'),
           onPressed: busy ? null : onVerify,
@@ -315,6 +362,7 @@ class _CredentialsStep extends StatelessWidget {
     required this.roomCtrl,
     required this.onNext,
   });
+
   final TextEditingController ssidCtrl;
   final TextEditingController pwdCtrl;
   final TextEditingController nameCtrl;
@@ -444,6 +492,7 @@ class _ResultStep extends StatelessWidget {
     this.onRetry,
     this.onAddAnother,
   });
+
   final bool success;
   final String message;
   final VoidCallback onFinish;
