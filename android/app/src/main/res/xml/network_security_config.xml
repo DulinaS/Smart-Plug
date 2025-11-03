@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext HTTP (http://) — needed to talk to ESP32 SoftAP at 192.168.4.1 -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

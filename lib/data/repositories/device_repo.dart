@@ -4,11 +4,13 @@ import '../../core/services/http_client.dart';
 import '../../core/config/env.dart';
 import '../models/device.dart';
 import '../models/sensor_reading.dart';
+import '../../core/services/secure_store.dart';
 
 class DeviceRepository {
   final HttpClient _httpClient;
+  final SecureStore _secureStore;
 
-  DeviceRepository(this._httpClient);
+  DeviceRepository(this._httpClient, this._secureStore);
 
   Future<SensorReading> getLatestReading() async {
     try {
@@ -17,8 +19,7 @@ class DeviceRepository {
       );
       return SensorReading.fromApiResponse(response.data);
     } on DioException catch (e) {
-      print('DioException in getLatestReading: ${e.message}');
-      // Return mock data when API fails (no real ESP32 device)
+      print('DioException in getLatestReading: ${e.type} ${e.message}');
       return SensorReading(
         voltage: 230.0 + (DateTime.now().millisecond % 10),
         current: 1.5 + (DateTime.now().millisecond % 100) / 100,
@@ -27,7 +28,6 @@ class DeviceRepository {
       );
     } catch (e) {
       print('Unexpected error in getLatestReading: $e');
-      // Return mock data for any other error
       return SensorReading(
         voltage: 230.0,
         current: 1.5,
@@ -50,20 +50,46 @@ class DeviceRepository {
 
   Future<void> addDevice(String deviceId, String name, String room) async {
     try {
-      final data = {
-        'deviceId': deviceId,
-        'deviceName': name,
-        'room': room,
-        'userId': 'current-user', // You should get this from auth state
-      };
+      // AWS IoT thingName must match: [a-zA-Z0-9:_-]+
+      final sanitizedThingName = _sanitizeThingName(name);
+      final userId = await _secureStore
+          .getUserId(); // optional if backend derives from JWT
 
-      await _httpClient.dio.post(
+      final data = <String, dynamic>{
+        'deviceId': deviceId,
+        // Send a safe thingName via deviceName, plus keep a displayName (UI label with spaces)
+        'deviceName': sanitizedThingName,
+        'displayName': name,
+        'room': room,
+      };
+      if (userId != null) {
+        data['userId'] = userId;
+      }
+
+      final res = await _httpClient.dio.post(
         '${AppConfig.deviceBaseUrl}/add-device',
         data: data,
       );
+
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        throw 'Unexpected response: ${res.statusCode}';
+      }
     } on DioException catch (e) {
+      print(
+        'addDevice error: status=${e.response?.statusCode} data=${e.response?.data} type=${e.type} message=${e.message}',
+      );
       throw _handleError(e);
     }
+  }
+
+  // Replace disallowed chars with '-', collapse repeats, trim '-'
+  String _sanitizeThingName(String input) {
+    final replaced = input.replaceAll(RegExp(r'[^a-zA-Z0-9:_-]'), '-');
+    final collapsed = replaced.replaceAll(RegExp(r'-{2,}'), '-');
+    final trimmed = collapsed
+        .replaceAll(RegExp(r'^-+'), '')
+        .replaceAll(RegExp(r'-+$'), '');
+    return trimmed.isEmpty ? 'Device' : trimmed;
   }
 
   Future<void> updateDevice(
@@ -73,8 +99,10 @@ class DeviceRepository {
   }) async {
     try {
       final data = <String, dynamic>{'deviceId': deviceId};
-
-      if (name != null) data['deviceName'] = name;
+      if (name != null) {
+        data['deviceName'] = _sanitizeThingName(name);
+        data['displayName'] = name;
+      }
       if (room != null) data['room'] = room;
 
       await _httpClient.dio.put(
@@ -108,7 +136,7 @@ class DeviceRepository {
         status: DeviceExtensions.statusFromSensorReading(reading),
         lastSeen: DateTime.parse(reading.timestamp),
         firmwareVersion: 'v1.0.0',
-        isOnline: true, // Will be false if using mock data
+        isOnline: true,
         config: const DeviceConfig(
           maxCurrent: 16.0,
           maxPower: 3680.0,
@@ -155,17 +183,26 @@ class DeviceRepository {
   }
 
   String _handleError(DioException e) {
-    if (e.response?.statusCode == 404) return 'Device not found';
-    if (e.response?.statusCode == 403) return 'Access denied';
+    final code = e.response?.statusCode;
+    if (code == 401) return 'Not authenticated. Please log in again.';
+    if (code == 403) return 'Access denied';
+    if (code == 404) return 'Device not found';
+    if (code == 409) return 'Device already registered';
     if (e.type == DioExceptionType.connectionTimeout)
       return 'Connection timeout';
     if (e.type == DioExceptionType.receiveTimeout)
       return 'Device not responding';
-    return 'Device operation failed';
+    if (e.type == DioExceptionType.unknown)
+      return 'Network error. Please check your connection.';
+    final msg = e.response?.data is Map<String, dynamic>
+        ? e.response?.data['error']
+        : null;
+    return msg is String && msg.isNotEmpty ? msg : 'Device operation failed';
   }
 }
 
 final deviceRepositoryProvider = Provider<DeviceRepository>((ref) {
   final httpClient = ref.read(httpClientProvider);
-  return DeviceRepository(httpClient);
+  final secureStore = ref.read(secureStoreProvider);
+  return DeviceRepository(httpClient, secureStore);
 });

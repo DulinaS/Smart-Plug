@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,23 +12,53 @@ import '../../features/device_detail/presentation/device_detail_screen.dart';
 import '../../features/onboarding/presentation/add_device_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 
+class _RouterRefreshStream extends ChangeNotifier {
+  late final StreamSubscription<dynamic> _subscription;
+
+  _RouterRefreshStream(Stream<dynamic> stream) {
+    _subscription = stream.listen((_) => notifyListeners());
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authControllerProvider);
+  final refreshListenable = ref.watch(_routerRefreshProvider);
 
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: refreshListenable,
     redirect: (context, state) {
       final isAuthenticated = authState.isAuthenticated;
       final isLoading = authState.isLoading;
+      final location = state.matchedLocation;
 
       // Show loading screen while checking auth
-      if (isLoading) return '/loading';
+      if (isLoading) {
+        return location == '/loading' ? null : '/loading';
+      }
+
+      // Leave the loading screen once auth status is known
+      if (location == '/loading') {
+        return isAuthenticated ? '/dashboard' : '/login';
+      }
 
       // Allow access to auth-related pages without authentication
       final authPages = ['/login', '/register', '/verify-email'];
-      final isOnAuthPage = authPages.any(
-        (page) => state.matchedLocation.startsWith(page),
-      );
+      final isOnAuthPage = authPages.any(location.startsWith);
+
+      // Handle root path gracefully
+      if (location == '/' && isAuthenticated) {
+        return '/dashboard';
+      }
+      if (location == '/' && !isAuthenticated) {
+        return '/login';
+      }
 
       // Redirect to login if not authenticated and not on auth pages
       if (!isAuthenticated && !isOnAuthPage) {
@@ -80,4 +112,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+});
+
+final _routerRefreshProvider = Provider<_RouterRefreshStream>((ref) {
+  final authController = ref.watch(authControllerProvider.notifier);
+  final notifier = _RouterRefreshStream(authController.stream);
+  ref.onDispose(notifier.dispose);
+  return notifier;
 });

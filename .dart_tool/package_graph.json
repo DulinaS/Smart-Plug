@@ -23,7 +23,8 @@
         "json_serializable",
         "lottie",
         "mqtt_client",
-        "shared_preferences"
+        "shared_preferences",
+        "wifi_iot"
       ],
       "devDependencies": [
         "flutter_lints",
@@ -53,6 +54,13 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "wifi_iot",
+      "version": "0.3.19+2",
+      "dependencies": [
+        "flutter"
       ]
     },
     {
