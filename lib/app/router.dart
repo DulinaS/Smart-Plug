@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/application/auth_controller.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
-import '../../features/auth/presentation/email_verification_screen.dart';
+import '../../features/auth/presentation/confirm_signup_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/device_detail/presentation/device_detail_screen.dart';
 import '../../features/onboarding/presentation/add_device_screen.dart';
@@ -36,37 +36,56 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isAuthenticated = authState.isAuthenticated;
       final isLoading = authState.isLoading;
+      final requiresVerification = authState.requiresEmailVerification;
       final location = state.matchedLocation;
 
-      // Show loading screen while checking auth
-      if (isLoading) {
-        return location == '/loading' ? null : '/loading';
+      // Pages allowed when NOT authenticated
+      final authPages = <String>[
+        '/login',
+        '/register',
+        '/confirm-signup',
+        '/loading',
+      ];
+      final isOnAuthPage = authPages.any(location.startsWith);
+
+      // 1) Only redirect to /loading when not already on an auth page.
+      if (isLoading && !isOnAuthPage) {
+        return '/loading';
       }
 
-      // Leave the loading screen once auth status is known
-      if (location == '/loading') {
+      // 2) If we are on /loading, decide where to go next after loading completes
+      if (location == '/loading' && !isLoading) {
+        if (isAuthenticated) {
+          return '/dashboard';
+        }
+        // If signup requires email verification, send to confirm-signup with pending email
+        if (requiresVerification) {
+          final email = Uri.encodeComponent(authState.pendingEmail ?? '');
+          return '/confirm-signup?email=$email';
+        }
+        return '/login';
+      }
+
+      // 3) Root path routing
+      if (location == '/') {
         return isAuthenticated ? '/dashboard' : '/login';
       }
 
-      // Allow access to auth-related pages without authentication
-      final authPages = ['/login', '/register', '/verify-email'];
-      final isOnAuthPage = authPages.any(location.startsWith);
-
-      // Handle root path gracefully
-      if (location == '/' && isAuthenticated) {
-        return '/dashboard';
+      // 4) If user needs email verification and not already on confirm-signup, redirect there
+      if (requiresVerification && !location.startsWith('/confirm-signup')) {
+        final email = Uri.encodeComponent(authState.pendingEmail ?? '');
+        return '/confirm-signup?email=$email';
       }
-      if (location == '/' && !isAuthenticated) {
+
+      // 5) Guard non-auth pages for unauthenticated users
+      if (!isAuthenticated && !isOnAuthPage && !requiresVerification) {
         return '/login';
       }
 
-      // Redirect to login if not authenticated and not on auth pages
-      if (!isAuthenticated && !isOnAuthPage) {
-        return '/login';
-      }
-
-      // Redirect to dashboard if authenticated and on auth pages
-      if (isAuthenticated && isOnAuthPage) {
+      // 6) Keep authenticated users away from auth pages (but allow confirm-signup)
+      if (isAuthenticated &&
+          isOnAuthPage &&
+          !location.startsWith('/confirm-signup')) {
         return '/dashboard';
       }
 
@@ -85,10 +104,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const RegisterScreen(),
       ),
       GoRoute(
-        path: '/verify-email',
+        path: '/confirm-signup',
         builder: (context, state) {
           final email = state.uri.queryParameters['email'] ?? '';
-          return EmailVerificationScreen(email: email);
+          return ConfirmSignupScreen(prefilledEmail: email);
         },
       ),
       GoRoute(

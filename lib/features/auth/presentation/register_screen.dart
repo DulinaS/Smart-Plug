@@ -43,13 +43,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ref.read(authControllerProvider.notifier).clearError();
       }
 
-      // Registration successful, navigate to email verification
-      if (!next.isLoading &&
-          next.error == null &&
+      // Navigate to confirm-signup when verification is required
+      final justFinishedSignup =
+          previous?.isLoading == true && next.isLoading == false;
+      if (justFinishedSignup &&
           next.requiresEmailVerification &&
-          next.pendingEmail != null &&
-          previous?.isLoading == true) {
-        context.go('/email-verification', extra: next.pendingEmail);
+          next.pendingEmail != null) {
+        final email = Uri.encodeComponent(next.pendingEmail!);
+        context.go('/confirm-signup?email=$email');
       }
     });
 
@@ -65,8 +66,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 24),
-
-                  // Logo and Title
                   const Icon(Icons.person_add, size: 64, color: Colors.blue),
                   const SizedBox(height: 24),
                   Text(
@@ -86,7 +85,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 48),
 
-                  // Username Field
+                  // Username
                   TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
@@ -99,7 +98,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Email Field
+                  // Email
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -112,7 +111,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Password Field
+                  // Password
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -135,7 +134,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Confirm Password Field
+                  // Confirm password
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: _obscureConfirmPassword,
@@ -156,15 +155,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       border: const OutlineInputBorder(),
                     ),
                     validator: (value) {
-                      if (value != _passwordController.text) {
+                      if (value != _passwordController.text)
                         return 'Passwords do not match';
-                      }
                       return null;
                     },
                   ),
                   const SizedBox(height: 24),
 
-                  // Register Button
+                  // Submit
                   authState.isLoading
                       ? const LoadingWidget()
                       : CustomButton(
@@ -173,7 +171,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ),
                   const SizedBox(height: 16),
 
-                  // Login Link
+                  // Login link
                   TextButton(
                     onPressed: () => context.go('/login'),
                     child: const Text('Already have an account? Sign in'),
