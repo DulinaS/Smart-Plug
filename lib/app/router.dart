@@ -8,8 +8,9 @@ import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
 import '../../features/auth/presentation/confirm_signup_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
-import '../../features/device_detail/presentation/device_detail_screen.dart';
+import '../../features/devices/presentation/device_detail_screen.dart';
 import '../../features/onboarding/presentation/add_device_screen.dart';
+import '../../features/onboarding/presentation/device_details_page.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 
 class _RouterRefreshStream extends ChangeNotifier {
@@ -39,7 +40,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       final requiresVerification = authState.requiresEmailVerification;
       final location = state.matchedLocation;
 
-      // Pages allowed when NOT authenticated
       final authPages = <String>[
         '/login',
         '/register',
@@ -48,17 +48,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ];
       final isOnAuthPage = authPages.any(location.startsWith);
 
-      // 1) Only redirect to /loading when not already on an auth page.
-      if (isLoading && !isOnAuthPage) {
-        return '/loading';
-      }
+      if (isLoading && !isOnAuthPage) return '/loading';
 
-      // 2) If we are on /loading, decide where to go next after loading completes
       if (location == '/loading' && !isLoading) {
-        if (isAuthenticated) {
-          return '/dashboard';
-        }
-        // If signup requires email verification, send to confirm-signup with pending email
+        if (isAuthenticated) return '/dashboard';
         if (requiresVerification) {
           final email = Uri.encodeComponent(authState.pendingEmail ?? '');
           return '/confirm-signup?email=$email';
@@ -66,23 +59,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
 
-      // 3) Root path routing
-      if (location == '/') {
-        return isAuthenticated ? '/dashboard' : '/login';
-      }
+      if (location == '/') return isAuthenticated ? '/dashboard' : '/login';
 
-      // 4) If user needs email verification and not already on confirm-signup, redirect there
       if (requiresVerification && !location.startsWith('/confirm-signup')) {
         final email = Uri.encodeComponent(authState.pendingEmail ?? '');
         return '/confirm-signup?email=$email';
       }
 
-      // 5) Guard non-auth pages for unauthenticated users
       if (!isAuthenticated && !isOnAuthPage && !requiresVerification) {
         return '/login';
       }
 
-      // 6) Keep authenticated users away from auth pages (but allow confirm-signup)
       if (isAuthenticated &&
           isOnAuthPage &&
           !location.startsWith('/confirm-signup')) {
@@ -121,9 +108,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           return DeviceDetailScreen(deviceId: deviceId);
         },
       ),
+      // Entry point for SoftAP provisioning (existing)
       GoRoute(
         path: '/add-device',
         builder: (context, state) => const AddDeviceScreen(),
+      ),
+      // NEW: Device details step to capture sticker ID, name, room, plug type
+      GoRoute(
+        path: '/provision/details',
+        builder: (context, state) => const DeviceDetailsPage(),
       ),
       GoRoute(
         path: '/settings',

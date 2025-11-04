@@ -49,7 +49,7 @@ class DeviceRepository {
     }
   }
 
-  // UPDATED: return the canonical deviceId from backend response.
+  /*  // UPDATED: return the canonical deviceId from backend response.
   Future<String> addDevice(
     String provisionalId,
     String displayName,
@@ -137,7 +137,7 @@ class DeviceRepository {
       throw _handleError(e);
     }
   }
-
+ */
   // Currently mock until you wire a real GET
   Future<List<Device>> getDevices() async {
     try {
