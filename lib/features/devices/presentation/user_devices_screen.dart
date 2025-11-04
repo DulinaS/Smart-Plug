@@ -11,6 +11,19 @@ class UserDevicesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final devicesAsync = ref.watch(userDevicesControllerProvider);
 
+    Future<void> goToAddDevice() async {
+      final res = await context.push('/add-device');
+      // Regardless of result, refresh when returning from provisioning
+      await ref.read(userDevicesControllerProvider.notifier).refresh();
+
+      // Optional toast if a truthy result is returned by the flow
+      if (res == true && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Device linked')));
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Devices'),
@@ -21,15 +34,40 @@ class UserDevicesScreen extends ConsumerWidget {
             onPressed: () =>
                 ref.read(userDevicesControllerProvider.notifier).refresh(),
           ),
+          IconButton(
+            tooltip: 'Add Device',
+            icon: const Icon(Icons.add),
+            onPressed: goToAddDevice,
+          ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: goToAddDevice,
+        child: const Icon(Icons.add),
       ),
       body: devicesAsync.when(
         data: (devices) {
           if (devices.isEmpty) {
-            return const Center(
-              child: Text(
-                'No devices yet.\nProvision a plug to link it here.',
-                textAlign: TextAlign.center,
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.devices, size: 64, color: Colors.grey),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'No devices yet.\nProvision a plug to link it here.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: goToAddDevice,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Device'),
+                    ),
+                  ],
+                ),
               ),
             );
           }

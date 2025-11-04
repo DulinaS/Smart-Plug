@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +9,7 @@ import '../../core/services/secure_store.dart';
 @immutable
 class UserDevice {
   final String deviceId;
-  final String deviceName; // display name
+  final String deviceName;
   final String? roomName;
   final String? plugType;
   final DateTime createdAt;
@@ -40,7 +41,6 @@ class UserDeviceRepository {
 
   UserDeviceRepository(this._http, this._secure);
 
-  // Link a device to the current user (Option B)
   Future<void> linkDeviceToCurrentUser({
     required String deviceId,
     required String deviceName,
@@ -52,50 +52,88 @@ class UserDeviceRepository {
       throw 'No user email found. Please log in again.';
     }
 
-    try {
-      await _http.dio.post(
-        AppConfig.userDeviceBaseUrl,
-        data: {
-          'userId': email, // email per your API
-          'deviceId': deviceId, // sticker/printed id
-          'deviceName': deviceName, // friendly name the user typed
-          'roomName': roomName,
-          'plugType': plugType, // e.g., Fan, Refrigerator, Oven...
-        },
-      );
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 400) throw 'Missing required fields';
-      throw 'Failed to link device';
-    }
+    await _http.dio.post(
+      AppConfig.userDeviceBaseUrl,
+      data: {
+        'userId': email,
+        'deviceId': deviceId,
+        'deviceName': deviceName,
+        'roomName': roomName,
+        'plugType': plugType,
+      },
+    );
   }
 
-  // List devices for current user
   Future<List<UserDevice>> getDevicesForCurrentUser() async {
     final email = await _secure.getUserEmail();
     if (email == null || email.isEmpty) {
       throw 'No user email found. Please log in again.';
     }
 
-    try {
-      final res = await _http.dio.post(
-        '${AppConfig.userDeviceBaseUrl}/get',
-        data: {'userId': email},
+    final res = await _http.dio.post(
+      '${AppConfig.userDeviceBaseUrl}/get',
+      data: {'userId': email},
+    );
+
+    final raw = res.data;
+    if (kDebugMode) {
+      debugPrint(
+        'UserDeviceRepo.getDevicesForCurrentUser email=$email, rawType=${raw.runtimeType}',
       );
-      final data = res.data as Map<String, dynamic>;
-      final list = (data['devices'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map(UserDevice.fromJson)
-          .toList();
-      return list;
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 400) throw 'Missing required field: userId';
-      throw 'Error fetching user devices';
     }
+
+    dynamic root = raw;
+
+    // NEW: API returns a JSON string → decode it first
+    if (root is String) {
+      try {
+        root = json.decode(root);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Failed to decode string body: $e');
+        }
+        root = {};
+      }
+    }
+
+    List<dynamic> list = const [];
+
+    if (root is List) {
+      list = root;
+    } else if (root is Map<String, dynamic>) {
+      if (root['devices'] is List) {
+        list = root['devices'] as List;
+      } else if (root['Items'] is List) {
+        list = root['Items'] as List;
+      } else if (root['data'] is List) {
+        list = root['data'] as List;
+      } else if (root['body'] is String) {
+        // Sometimes API Gateway nests JSON in "body"
+        try {
+          final decoded = json.decode(root['body']);
+          if (decoded is List) {
+            list = decoded;
+          } else if (decoded is Map && decoded['devices'] is List) {
+            list = decoded['devices'] as List;
+          }
+        } catch (_) {}
+      }
+    }
+
+    final devices = list
+        .whereType<Map<String, dynamic>>()
+        .map(UserDevice.fromJson)
+        .toList();
+
+    if (kDebugMode) {
+      debugPrint(
+        'UserDeviceRepo.getDevicesForCurrentUser parsed=${devices.length}',
+      );
+    }
+
+    return devices;
   }
 
-  // NEW: Update user device fields (deviceName, roomName, plugType)
   Future<void> updateUserDevice({
     required String deviceId,
     String? deviceName,
@@ -103,42 +141,26 @@ class UserDeviceRepository {
     String? plugType,
   }) async {
     final email = await _secure.getUserEmail();
-    if (email == null || email.isEmpty) {
+    if (email == null || email.isEmpty)
       throw 'No user email found. Please log in again.';
-    }
 
     final body = <String, dynamic>{'userId': email, 'deviceId': deviceId};
     if (deviceName != null) body['deviceName'] = deviceName;
     if (roomName != null) body['roomName'] = roomName;
     if (plugType != null) body['plugType'] = plugType;
 
-    try {
-      await _http.dio.post('${AppConfig.userDeviceBaseUrl}/update', data: body);
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 400) throw 'Missing required fields';
-      throw 'Failed to update device';
-    }
+    await _http.dio.post('${AppConfig.userDeviceBaseUrl}/update', data: body);
   }
 
-  // NEW: Unlink user device
   Future<void> unlinkUserDevice({required String deviceId}) async {
     final email = await _secure.getUserEmail();
-    if (email == null || email.isEmpty) {
+    if (email == null || email.isEmpty)
       throw 'No user email found. Please log in again.';
-    }
 
-    try {
-      await _http.dio.post(
-        '${AppConfig.userDeviceBaseUrl}/unlink',
-        data: {'userId': email, 'deviceId': deviceId},
-      );
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 400) throw 'Missing required fields';
-      if (code == 404) throw 'Device not found';
-      throw 'Failed to unlink device';
-    }
+    await _http.dio.post(
+      '${AppConfig.userDeviceBaseUrl}/unlink',
+      data: {'userId': email, 'deviceId': deviceId},
+    );
   }
 }
 
