@@ -19,6 +19,7 @@ class DeviceRepository {
       );
       return SensorReading.fromApiResponse(response.data);
     } on DioException catch (e) {
+      // Keep mock on failure
       print('DioException in getLatestReading: ${e.type} ${e.message}');
       return SensorReading(
         voltage: 230.0 + (DateTime.now().millisecond % 10),
@@ -48,18 +49,22 @@ class DeviceRepository {
     }
   }
 
-  Future<void> addDevice(String deviceId, String name, String room) async {
+  // UPDATED: return the canonical deviceId from backend response.
+  Future<String> addDevice(
+    String provisionalId,
+    String displayName,
+    String room,
+  ) async {
     try {
       // AWS IoT thingName must match: [a-zA-Z0-9:_-]+
-      final sanitizedThingName = _sanitizeThingName(name);
+      final sanitizedThingName = _sanitizeThingName(displayName);
       final userId = await _secureStore
           .getUserId(); // optional if backend derives from JWT
 
       final data = <String, dynamic>{
-        'deviceId': deviceId,
-        // Send a safe thingName via deviceName, plus keep a displayName (UI label with spaces)
-        'deviceName': sanitizedThingName,
-        'displayName': name,
+        'deviceId': provisionalId,
+        'deviceName': sanitizedThingName, // thingName-safe
+        'displayName': displayName, // user-facing label with spaces
         'room': room,
       };
       if (userId != null) {
@@ -74,6 +79,17 @@ class DeviceRepository {
       if (res.statusCode != 200 && res.statusCode != 201) {
         throw 'Unexpected response: ${res.statusCode}';
       }
+
+      // Parse canonical ID from response: { device: { deviceId: "..." }, ... }
+      final body = res.data is Map<String, dynamic>
+          ? res.data as Map<String, dynamic>
+          : <String, dynamic>{};
+      final device = body['device'] as Map<String, dynamic>?;
+      final canonical = (device?['deviceId'] as String?)?.trim();
+
+      // Fallbacks: if backend didn’t echo, prefer sanitized thingName (stable), else provisional
+      if (canonical != null && canonical.isNotEmpty) return canonical;
+      return sanitizedThingName.isNotEmpty ? sanitizedThingName : provisionalId;
     } on DioException catch (e) {
       print(
         'addDevice error: status=${e.response?.statusCode} data=${e.response?.data} type=${e.type} message=${e.message}',
@@ -82,32 +98,29 @@ class DeviceRepository {
     }
   }
 
-  // Replace disallowed chars with '-', collapse repeats, trim '-'
-  String _sanitizeThingName(String input) {
-    final replaced = input.replaceAll(RegExp(r'[^a-zA-Z0-9:_-]'), '-');
-    final collapsed = replaced.replaceAll(RegExp(r'-{2,}'), '-');
-    final trimmed = collapsed
-        .replaceAll(RegExp(r'^-+'), '')
-        .replaceAll(RegExp(r'-+$'), '');
-    return trimmed.isEmpty ? 'Device' : trimmed;
-  }
-
+  // Matches your UpdateDevice API
   Future<void> updateDevice(
     String deviceId, {
     String? name,
     String? room,
+    DeviceConfig? config,
   }) async {
     try {
-      final data = <String, dynamic>{'deviceId': deviceId};
-      if (name != null) {
-        data['deviceName'] = _sanitizeThingName(name);
-        data['displayName'] = name;
+      final body = <String, dynamic>{'deviceId': deviceId};
+      if (name != null) body['name'] = name;
+      if (room != null) body['room'] = room;
+      if (config != null) {
+        body['config'] = {
+          'maxCurrent': config.maxCurrent,
+          'maxPower': config.maxPower,
+          'safetyEnabled': config.safetyEnabled,
+          'reportInterval': config.reportInterval,
+        };
       }
-      if (room != null) data['room'] = room;
 
       await _httpClient.dio.put(
         '${AppConfig.deviceBaseUrl}/update-device',
-        data: data,
+        data: body,
       );
     } on DioException catch (e) {
       throw _handleError(e);
@@ -125,6 +138,7 @@ class DeviceRepository {
     }
   }
 
+  // Currently mock until you wire a real GET
   Future<List<Device>> getDevices() async {
     try {
       final reading = await getLatestReading();
@@ -146,7 +160,7 @@ class DeviceRepository {
       );
 
       return [device];
-    } catch (e) {
+    } catch (_) {
       final mockReading = SensorReading(
         voltage: 230.5,
         current: 2.1,
@@ -180,6 +194,16 @@ class DeviceRepository {
       (d) => d.id == deviceId,
       orElse: () => throw Exception('Device not found'),
     );
+  }
+
+  // Replace disallowed chars with '-', collapse repeats, trim '-'
+  String _sanitizeThingName(String input) {
+    final replaced = input.replaceAll(RegExp(r'[^a-zA-Z0-9:_-]'), '-');
+    final collapsed = replaced.replaceAll(RegExp(r'-{2,}'), '-');
+    final trimmed = collapsed
+        .replaceAll(RegExp(r'^-+'), '')
+        .replaceAll(RegExp(r'-+$'), '');
+    return trimmed.isEmpty ? 'Device' : trimmed;
   }
 
   String _handleError(DioException e) {

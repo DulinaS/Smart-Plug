@@ -7,6 +7,7 @@ class SecureStore {
   static const _authTokenKey = 'auth_token';
   static const _refreshTokenKey = 'refresh_token';
   static const _userIdKey = 'user_id';
+  static const _userEmailKey = 'user_email'; // ADDED
 
   Future<void> saveAuthToken(String token) async {
     await _storage.write(key: _authTokenKey, value: token);
@@ -30,6 +31,15 @@ class SecureStore {
 
   Future<String?> getUserId() async {
     return await _storage.read(key: _userIdKey);
+  }
+
+  // ADDED: persist user email (needed by User Device Service API)
+  Future<void> saveUserEmail(String email) async {
+    await _storage.write(key: _userEmailKey, value: email);
+  }
+
+  Future<String?> getUserEmail() async {
+    return await _storage.read(key: _userEmailKey);
   }
 
   Future<void> clearAll() async {
