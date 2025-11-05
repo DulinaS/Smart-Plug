@@ -36,7 +36,6 @@ class DashboardScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Linked devices summary
           Card(
             elevation: 1,
             child: ListTile(
@@ -51,7 +50,6 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          // QUICK CONTROLS: show only when user has 1 or 2 devices
           devicesAsync.when(
             data: (list) {
               if (list.isEmpty || list.length > 2)
@@ -69,7 +67,6 @@ class DashboardScreen extends ConsumerWidget {
                   if (list.length == 1) ...[
                     QuickControlCard(device: list.first),
                   ] else ...[
-                    // two cards side-by-side; let them size to content
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -87,7 +84,6 @@ class DashboardScreen extends ConsumerWidget {
             error: (_, __) => const SizedBox.shrink(),
           ),
 
-          // Hub tiles
           GridView.count(
             crossAxisCount: 2,
             crossAxisSpacing: 12,
@@ -101,7 +97,8 @@ class DashboardScreen extends ConsumerWidget {
                 color: Colors.blue,
                 title: 'My Devices',
                 subtitle: 'View and manage',
-                onTap: () => context.go('/devices'),
+                // CHANGE: push so there’s a back arrow
+                onTap: () => context.push('/devices'),
               ),
               _Tile(
                 icon: Icons.add_circle_outline,
@@ -125,9 +122,9 @@ class DashboardScreen extends ConsumerWidget {
                 color: Colors.teal,
                 title: 'Settings',
                 subtitle: 'App & preferences',
-                onTap: () => context.go('/settings'),
+                // CHANGE: push so there’s a back arrow
+                onTap: () => context.push('/settings'),
               ),
-              // Add more tiles as needed...
             ],
           ),
         ],

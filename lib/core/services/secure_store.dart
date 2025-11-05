@@ -7,7 +7,11 @@ class SecureStore {
   static const _authTokenKey = 'auth_token';
   static const _refreshTokenKey = 'refresh_token';
   static const _userIdKey = 'user_id';
-  static const _userEmailKey = 'user_email'; // ADDED
+  static const _userEmailKey = 'user_email';
+
+  // NEW: persist username + displayName so we can restore real profile on app start
+  static const _usernameKey = 'user_username';
+  static const _displayNameKey = 'user_display_name';
 
   Future<void> saveAuthToken(String token) async {
     await _storage.write(key: _authTokenKey, value: token);
@@ -33,13 +37,34 @@ class SecureStore {
     return await _storage.read(key: _userIdKey);
   }
 
-  // ADDED: persist user email (needed by User Device Service API)
   Future<void> saveUserEmail(String email) async {
     await _storage.write(key: _userEmailKey, value: email);
   }
 
   Future<String?> getUserEmail() async {
     return await _storage.read(key: _userEmailKey);
+  }
+
+  // NEW
+  Future<void> saveUsername(String username) async {
+    await _storage.write(key: _usernameKey, value: username);
+  }
+
+  Future<String?> getUsername() async {
+    return await _storage.read(key: _usernameKey);
+  }
+
+  // NEW
+  Future<void> saveDisplayName(String? displayName) async {
+    if (displayName == null || displayName.isEmpty) {
+      await _storage.delete(key: _displayNameKey);
+    } else {
+      await _storage.write(key: _displayNameKey, value: displayName);
+    }
+  }
+
+  Future<String?> getDisplayName() async {
+    return await _storage.read(key: _displayNameKey);
   }
 
   Future<void> clearAll() async {

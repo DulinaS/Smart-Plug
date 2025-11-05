@@ -13,10 +13,7 @@ class UserDevicesScreen extends ConsumerWidget {
 
     Future<void> goToAddDevice() async {
       final res = await context.push('/add-device');
-      // Regardless of result, refresh when returning from provisioning
       await ref.read(userDevicesControllerProvider.notifier).refresh();
-
-      // Optional toast if a truthy result is returned by the flow
       if (res == true && context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -27,6 +24,7 @@ class UserDevicesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Devices'),
+        // When navigated via push (from Dashboard), you’ll get a default back arrow here.
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -107,7 +105,8 @@ class UserDevicesScreen extends ConsumerWidget {
                       PopupMenuItem(value: 'unlink', child: Text('Unlink')),
                     ],
                   ),
-                  onTap: () => context.go('/device/${d.deviceId}'),
+                  // CHANGE: push so the detail page has a back arrow
+                  onTap: () => context.push('/device/${d.deviceId}'),
                 );
               },
             ),

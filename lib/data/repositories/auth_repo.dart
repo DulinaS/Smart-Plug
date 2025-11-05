@@ -45,28 +45,35 @@ class AuthRepository {
         await _secureStore.saveRefreshToken(refresh);
       }
 
-      // Persist identifiers
       final nestedUser = data['user'] as Map<String, dynamic>?;
       final userId =
           (data['sub'] as String?) ??
           (nestedUser?['id'] as String?) ??
           (data['id'] as String?) ??
           'unknown';
-
       await _secureStore.saveUserId(userId);
 
-      // Save email for User Device Service
       final emailFromResponse =
           (data['email'] ?? nestedUser?['email'] ?? email) as String;
       await _secureStore.saveUserEmail(emailFromResponse);
 
+      final usernameFromResponse =
+          (data['username'] ??
+                  nestedUser?['username'] ??
+                  emailFromResponse.split('@')[0])
+              as String;
+      final displayNameFromResponse =
+          (data['name'] ?? nestedUser?['displayName']) as String?;
+
+      // Persist for cold start restore
+      await _secureStore.saveUsername(usernameFromResponse);
+      await _secureStore.saveDisplayName(displayNameFromResponse);
+
       return User(
         id: userId,
         email: emailFromResponse,
-        username:
-            (data['username'] ?? nestedUser?['username'] ?? email.split('@')[0])
-                as String,
-        displayName: (data['name'] ?? nestedUser?['displayName']) as String?,
+        username: usernameFromResponse,
+        displayName: displayNameFromResponse,
         createdAt: DateTime.now(),
       );
     } on DioException catch (e) {
@@ -90,6 +97,7 @@ class AuthRepository {
     await _secureStore.clearAll();
   }
 
+  // FIX: restore full profile on app start using persisted values
   Future<User?> getCurrentUser() async {
     try {
       final token = await _secureStore.getAuthToken();
@@ -97,10 +105,15 @@ class AuthRepository {
       final email = await _secureStore.getUserEmail();
       if (token == null || userId == null || email == null) return null;
 
+      final username =
+          (await _secureStore.getUsername()) ?? email.split('@').first;
+      final displayName = await _secureStore.getDisplayName();
+
       return User(
         id: userId,
         email: email,
-        username: 'user',
+        username: username,
+        displayName: displayName,
         createdAt: DateTime.now(),
       );
     } catch (_) {

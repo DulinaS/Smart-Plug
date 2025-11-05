@@ -19,7 +19,8 @@ class QuickControlCard extends ConsumerWidget {
     return Card(
       elevation: 2,
       child: InkWell(
-        onTap: () => context.go('/device/${device.deviceId}'),
+        // CHANGE: push so you get a back arrow from detail
+        onTap: () => context.push('/device/${device.deviceId}'),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
