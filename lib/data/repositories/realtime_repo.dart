@@ -38,13 +38,23 @@ class RealtimeRepository {
 
     Future<void> poll() async {
       try {
-        final reading = await _deviceRepository.getLatestReadingForDevice(
-          deviceId,
-        );
+        final raw = await _deviceRepository.getLatestReadingForDevice(deviceId);
 
-        if (reading != null) {
+        if (raw != null) {
           final buf = _buffers[deviceId]!;
-          final newTs = DateTime.parse(reading.timestamp);
+          final newTs = DateTime.parse(raw.timestamp);
+
+          // Normalize OFF: force values to zero for clean visual drop
+          final isOff = (raw.state?.toUpperCase() == 'OFF');
+          final reading = isOff
+              ? SensorReading(
+                  voltage: 0.0,
+                  current: 0.0,
+                  power: 0.0,
+                  timestamp: raw.timestamp,
+                  state: raw.state,
+                )
+              : raw;
 
           // If there's a long gap, start fresh (don't connect over the gap)
           if (buf.isNotEmpty) {
@@ -149,7 +159,6 @@ final realtimeRepositoryProvider = Provider<RealtimeRepository>((ref) {
   return repo;
 });
 
-// StreamProvider to consume in UI: ref.watch(realtimeBufferStreamProvider(deviceId))
 final realtimeBufferStreamProvider =
     StreamProvider.family<List<SensorReading>, String>((ref, deviceId) {
       final repo = ref.read(realtimeRepositoryProvider);
