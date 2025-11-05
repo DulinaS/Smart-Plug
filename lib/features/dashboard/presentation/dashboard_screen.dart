@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../devices/application/user_devices_controller.dart';
+import 'widgets/quick_control_card.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -30,33 +31,12 @@ class DashboardScreen extends ConsumerWidget {
             onPressed: () =>
                 ref.read(userDevicesControllerProvider.notifier).refresh(),
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'profile':
-                  context.go('/profile');
-                  break;
-                case 'settings':
-                  context.go('/settings');
-                  break;
-                case 'logout':
-                  ref.read(authControllerProvider.notifier).logout();
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'profile', child: Text('Profile')),
-              PopupMenuItem(value: 'settings', child: Text('Settings')),
-              PopupMenuDivider(),
-              PopupMenuItem(value: 'logout', child: Text('Logout')),
-            ],
-          ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Small info card (devices count)
+          // Linked devices summary
           Card(
             elevation: 1,
             child: ListTile(
@@ -71,7 +51,43 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
-          // Quick actions grid
+          // QUICK CONTROLS: show only when user has 1 or 2 devices
+          devicesAsync.when(
+            data: (list) {
+              if (list.isEmpty || list.length > 2)
+                return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Quick controls',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (list.length == 1) ...[
+                    QuickControlCard(device: list.first),
+                  ] else ...[
+                    // two cards side-by-side; let them size to content
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: QuickControlCard(device: list[0])),
+                        const SizedBox(width: 12),
+                        Expanded(child: QuickControlCard(device: list[1])),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                ],
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+
+          // Hub tiles
           GridView.count(
             crossAxisCount: 2,
             crossAxisSpacing: 12,
@@ -94,7 +110,6 @@ class DashboardScreen extends ConsumerWidget {
                 subtitle: 'Wi‑Fi provisioning',
                 onTap: () async {
                   final res = await context.push('/add-device');
-                  // Refresh the devices list on return
                   await ref
                       .read(userDevicesControllerProvider.notifier)
                       .refresh();
@@ -106,27 +121,13 @@ class DashboardScreen extends ConsumerWidget {
                 },
               ),
               _Tile(
-                icon: Icons.schedule,
-                color: Colors.orange,
-                title: 'Schedules',
-                subtitle: 'Automations',
-                onTap: () => context.go('/schedules'),
-              ),
-              _Tile(
-                icon: Icons.person_outline,
-                color: Colors.purple,
-                title: 'Profile',
-                subtitle: 'Account info',
-                onTap: () => context.go('/profile'),
-              ),
-              _Tile(
                 icon: Icons.settings_outlined,
                 color: Colors.teal,
                 title: 'Settings',
                 subtitle: 'App & preferences',
                 onTap: () => context.go('/settings'),
               ),
-              // Add more tiles here as needed (Usage, Help, etc.)
+              // Add more tiles as needed...
             ],
           ),
         ],
