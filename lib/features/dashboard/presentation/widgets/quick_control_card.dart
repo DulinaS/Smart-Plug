@@ -16,144 +16,131 @@ class QuickControlCard extends ConsumerWidget {
       deviceControlControllerProvider(device.deviceId).notifier,
     );
 
+    Color _statusColor() {
+      if (control.busy) return Colors.amber;
+      if (control.isOn == null) return Colors.grey;
+      return control.isOn! ? Colors.green : Colors.red;
+    }
+
+    final compactStyle = ButtonStyle(
+      padding: WidgetStateProperty.all(
+        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+      minimumSize: WidgetStateProperty.all(const Size(0, 32)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+
     return Card(
       elevation: 2,
       child: InkWell(
-        // CHANGE: push so you get a back arrow from detail
         onTap: () => context.push('/device/${device.deviceId}'),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          // Tighter padding for compact layout
+          padding: const EdgeInsets.all(10.0),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Compact mode thresholds
+              final showSubtitle = constraints.maxHeight >= 165;
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.power_outlined),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      device.deviceName.isNotEmpty
-                          ? device.deviceName
-                          : device.deviceId,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                  // Header with tiny status dot
+                  Row(
+                    children: [
+                      const Icon(Icons.power_outlined, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          device.deviceName.isNotEmpty
+                              ? device.deviceName
+                              : device.deviceId,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: control.busy
+                            ? 'Updating…'
+                            : control.isOn == null
+                            ? 'Unknown'
+                            : control.isOn!
+                            ? 'Requested: ON'
+                            : 'Requested: OFF',
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _statusColor(),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (showSubtitle &&
+                      ((device.roomName ?? '').isNotEmpty ||
+                          (device.plugType ?? '').isNotEmpty)) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        if ((device.roomName ?? '').isNotEmpty)
+                          device.roomName!,
+                        if ((device.plugType ?? '').isNotEmpty)
+                          device.plugType!,
+                      ].join(' • '),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
-              ),
+                  ],
 
-              if ((device.roomName ?? '').isNotEmpty ||
-                  (device.plugType ?? '').isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  [
-                    if ((device.roomName ?? '').isNotEmpty) device.roomName!,
-                    if ((device.plugType ?? '').isNotEmpty) device.plugType!,
-                  ].join(' • '),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                  const Spacer(),
 
-              const SizedBox(height: 12),
-
-              if (control.error != null) ...[
-                ErrorInlineBanner(
-                  message: control.error!,
-                  onDismiss: ctrl.clearError,
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isCompact = constraints.maxWidth < 260;
-
-                  final compactStyle = ButtonStyle(
-                    padding: WidgetStateProperty.all(
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    minimumSize: WidgetStateProperty.all(const Size(0, 36)),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  );
-
-                  return Row(
+                  // Controls row (compact)
+                  Row(
                     children: [
                       Expanded(
-                        child: isCompact
-                            ? FilledButton(
-                                onPressed: control.busy
-                                    ? null
-                                    : () => ctrl.setOn(true),
-                                style: compactStyle,
-                                child: control.busy
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text('ON'),
-                              )
-                            : FilledButton.icon(
-                                onPressed: control.busy
-                                    ? null
-                                    : () => ctrl.setOn(true),
-                                icon: control.busy
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.toggle_on),
-                                label: const Text('ON'),
-                              ),
+                        child: FilledButton(
+                          onPressed: control.busy
+                              ? null
+                              : () => ctrl.setOn(true),
+                          style: compactStyle,
+                          child: control.busy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('On'),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: isCompact
-                            ? OutlinedButton(
-                                onPressed: control.busy
-                                    ? null
-                                    : () => ctrl.setOn(false),
-                                style: compactStyle,
-                                child: const Text('OFF'),
-                              )
-                            : OutlinedButton.icon(
-                                onPressed: control.busy
-                                    ? null
-                                    : () => ctrl.setOn(false),
-                                icon: const Icon(Icons.toggle_off),
-                                label: const Text('OFF'),
-                              ),
+                        child: OutlinedButton(
+                          onPressed: control.busy
+                              ? null
+                              : () => ctrl.setOn(false),
+                          style: compactStyle,
+                          child: const Text('Off'),
+                        ),
                       ),
                     ],
-                  );
-                },
-              ),
-
-              const SizedBox(height: 8),
-              Text(
-                'Requested: ${control.isOn == null
-                    ? '—'
-                    : control.isOn!
-                    ? 'ON'
-                    : 'OFF'}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),

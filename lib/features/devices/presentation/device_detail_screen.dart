@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smart_plug/features/devices/application/user_devices_controller.dart';
 import 'package:smart_plug/features/onboarding/domain/plug_types.dart';
+// NEW: controls
+import 'package:smart_plug/features/device_detail/presentation/widgets/device_control_card.dart';
 
 class DeviceDetailScreen extends ConsumerStatefulWidget {
   final String deviceId;
@@ -111,6 +113,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              // Metadata
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -170,6 +173,13 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                   ),
                 ),
               ),
+
+              const SizedBox(height: 16),
+
+              // NEW: Controls (uses /device/command via ControlRepository)
+              DeviceControlCard(deviceId: device.deviceId),
+
+              // Telemetry/charts will be added later
             ],
           ),
         );

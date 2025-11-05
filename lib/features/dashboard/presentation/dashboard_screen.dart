@@ -36,6 +36,7 @@ class DashboardScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Linked devices summary
           Card(
             elevation: 1,
             child: ListTile(
@@ -50,10 +51,12 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
+          // QUICK CONTROLS
           devicesAsync.when(
             data: (list) {
-              if (list.isEmpty || list.length > 2)
-                return const SizedBox.shrink();
+              if (list.isEmpty) return const SizedBox.shrink();
+              final quick = list.take(4).toList();
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -64,16 +67,38 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (list.length == 1) ...[
-                    QuickControlCard(device: list.first),
-                  ] else ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: QuickControlCard(device: list[0])),
-                        const SizedBox(width: 12),
-                        Expanded(child: QuickControlCard(device: list[1])),
-                      ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Prefer ~160 px per tile; never drop below 2 cols; cap at 4
+                      final minTileWidth = 160.0;
+                      int cols = (constraints.maxWidth / minTileWidth).floor();
+                      cols = cols.clamp(2, 4);
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: cols,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          // Shorter tiles for a compact look
+                          mainAxisExtent: 120,
+                        ),
+                        itemCount: quick.length,
+                        itemBuilder: (context, index) {
+                          return QuickControlCard(device: quick[index]);
+                        },
+                      );
+                    },
+                  ),
+                  if (list.length > 4) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => context.push('/devices'),
+                        icon: const Icon(Icons.chevron_right),
+                        label: Text('View all ${list.length} devices'),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -84,6 +109,7 @@ class DashboardScreen extends ConsumerWidget {
             error: (_, __) => const SizedBox.shrink(),
           ),
 
+          // Hub tiles
           GridView.count(
             crossAxisCount: 2,
             crossAxisSpacing: 12,
@@ -97,7 +123,6 @@ class DashboardScreen extends ConsumerWidget {
                 color: Colors.blue,
                 title: 'My Devices',
                 subtitle: 'View and manage',
-                // CHANGE: push so there’s a back arrow
                 onTap: () => context.push('/devices'),
               ),
               _Tile(
@@ -122,7 +147,6 @@ class DashboardScreen extends ConsumerWidget {
                 color: Colors.teal,
                 title: 'Settings',
                 subtitle: 'App & preferences',
-                // CHANGE: push so there’s a back arrow
                 onTap: () => context.push('/settings'),
               ),
             ],

@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:smart_plug/features/onboarding/application/provisioning_controller.dart';
+
+import '../../onboarding/domain/plug_types.dart';
+import '../../../core/services/provisioning_service.dart';
 
 class AddDeviceScreen extends ConsumerStatefulWidget {
   const AddDeviceScreen({super.key});
@@ -11,347 +15,379 @@ class AddDeviceScreen extends ConsumerStatefulWidget {
 }
 
 class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
-  final _wifiFormKey = GlobalKey<FormState>();
-  final _homeSsidCtrl = TextEditingController();
-  final _homePwdCtrl = TextEditingController();
+  static const deviceApSsid = 'ESP32_Config'; // matches your ESP32 define
 
-  final _deviceApSsidCtrl = TextEditingController(text: 'SMART_PLUG_AP');
-  final _deviceApPwdCtrl = TextEditingController();
+  bool _verifying = false;
+  bool _verified = false;
+  String? _verifyError;
 
-  bool _autoConnecting = false;
-  bool _sendingCreds = false;
-  bool _verifyingAp = false;
+  final _ssidCtrl = TextEditingController();
+  final _pwdCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
 
-  @override
-  void initState() {
-    super.initState();
-    // Do NOT call ref.listen or mutate providers here.
-    // ProvisioningController already starts at connectToDeviceAP by default.
-  }
+  bool _sending = false;
+  String? _sendMessage;
 
   @override
   void dispose() {
-    _homeSsidCtrl.dispose();
-    _homePwdCtrl.dispose();
-    _deviceApSsidCtrl.dispose();
-    _deviceApPwdCtrl.dispose();
+    _ssidCtrl.dispose();
+    _pwdCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(provisioningControllerProvider);
-
-    // Safe: ref.listen in build. Use post-frame for navigation to avoid doing it during build.
-    ref.listen<ProvisioningState>(provisioningControllerProvider, (prev, next) {
-      if (!mounted) return;
-
-      if (next.step == ProvisioningStep.waitingForDevice &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          context.push('/provision/details');
-        });
-      }
-
-      if (next.step == ProvisioningStep.success) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
-          } else {
-            context.go('/dashboard');
-          }
-        });
-      }
-    });
+    final provisioning = ref.watch(provisioningServiceProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Device (Wi‑Fi Provisioning)')),
+      appBar: AppBar(
+        title: const Text('Add Device'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(),
+          tooltip: 'Back',
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if ((state.message ?? '').isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: MaterialBanner(
-                content: Text(state.message!),
-                leading: Icon(
-                  state.step == ProvisioningStep.error
-                      ? Icons.error
-                      : Icons.info_outline,
-                  color: state.step == ProvisioningStep.error
-                      ? Theme.of(context).colorScheme.error
-                      : Theme.of(context).colorScheme.primary,
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      ref.read(provisioningControllerProvider.notifier).reset();
-                      // Controller initial() already sets SoftAP flow.
-                    },
-                    child: const Text('RESET'),
+          // Step 1: Connect to device AP
+          Text(
+            'Step 1 — Connect to the device hotspot',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Open Wi‑Fi settings and connect to "$deviceApSsid". '
+            'Return to this screen and tap Verify.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _verifying ? null : () => _verifyAp(provisioning),
+                  icon: _verifying
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle),
+                  label: Text(
+                    _verifying ? 'Verifying…' : 'I am connected • Verify',
                   ),
-                ],
+                ),
               ),
+              const SizedBox(width: 8),
+              if (Platform.isAndroid)
+                OutlinedButton.icon(
+                  onPressed: _verifying
+                      ? null
+                      : () => _tryAutoConnect(provisioning),
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('Auto-connect'),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          if (_verified)
+            _SuccessBanner(
+              text: 'Device AP verified. You can now enter your Wi‑Fi.',
+            )
+          else if (_verifyError != null)
+            _ErrorBanner(
+              text: _verifyError!,
+              onDismiss: () => setState(() => _verifyError = null),
             ),
 
-          // 1) Connect to device AP
-          _Section(
-            title: '1) Connect to device hotspot',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Open Wi‑Fi settings and connect to the device AP.\n'
-                  'Return here and tap "I am connected" to verify.',
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
+          const SizedBox(height: 16),
+          const Divider(height: 24),
+
+          // Step 2: Home Wi‑Fi credentials (enabled after verify)
+          Text(
+            'Step 2 — Enter your home Wi‑Fi',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Opacity(
+            opacity: _verified ? 1 : 0.5,
+            child: IgnorePointer(
+              ignoring: !_verified,
+              child: Form(
+                key: _formKey,
+                child: Column(
                   children: [
-                    FilledButton.tonalIcon(
-                      onPressed: _verifyingAp
-                          ? null
-                          : () async {
-                              setState(() => _verifyingAp = true);
-                              try {
-                                await ref
-                                    .read(
-                                      provisioningControllerProvider.notifier,
-                                    )
-                                    .verifyDeviceAP();
-                              } finally {
-                                if (mounted)
-                                  setState(() => _verifyingAp = false);
-                              }
-                            },
-                      icon: _verifyingAp
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.wifi_tethering),
-                      label: const Text('I am connected • Verify'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _autoConnecting
-                          ? null
-                          : () async {
-                              setState(() => _autoConnecting = true);
-                              try {
-                                await ref
-                                    .read(
-                                      provisioningControllerProvider.notifier,
-                                    )
-                                    .connectToAp(
-                                      deviceSsid: _deviceApSsidCtrl.text.trim(),
-                                      deviceApPassword:
-                                          _deviceApPwdCtrl.text.trim().isEmpty
-                                          ? null
-                                          : _deviceApPwdCtrl.text.trim(),
-                                    );
-                              } finally {
-                                if (mounted)
-                                  setState(() => _autoConnecting = false);
-                              }
-                            },
-                      icon: _autoConnecting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.wifi_find),
-                      label: const Text('Try auto‑connect'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ExpansionTile(
-                  title: const Text('Device AP (optional)'),
-                  subtitle: const Text('Used only if you try auto‑connect'),
-                  children: [
-                    TextField(
-                      controller: _deviceApSsidCtrl,
+                    TextFormField(
+                      controller: _ssidCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Device AP SSID',
-                        hintText: 'e.g., SMART_PLUG_AP',
+                        labelText: 'Wi‑Fi SSID (2.4 GHz)',
+                        prefixIcon: Icon(Icons.wifi),
+                        border: OutlineInputBorder(),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _deviceApPwdCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Device AP password (if any)',
-                      ),
-                      obscureText: true,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'SSID is required'
+                          : null,
                     ),
                     const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _pwdCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(),
+                      ),
+                      // Some networks are open; allow empty password
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _sending
+                            ? null
+                            : () => _sendCredentialsAndWait(provisioning),
+                        icon: _sending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(_sending ? 'Sending…' : 'Send credentials'),
+                      ),
+                    ),
+                    if (_sendMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _sendMessage!,
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          // 2) Home Wi‑Fi credentials
-          _Section(
-            title: '2) Enter your home Wi‑Fi',
-            child: Form(
-              key: _wifiFormKey,
-              child: Column(
-                children: [
-                  TextFormField(
-                    controller: _homeSsidCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Home Wi‑Fi SSID',
-                      hintText: 'e.g., MyHomeWiFi',
-                    ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'SSID is required'
-                        : null,
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _homePwdCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Wi‑Fi password',
-                    ),
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _sendingCreds
-                        ? null
-                        : () async {
-                            if (!(_wifiFormKey.currentState?.validate() ??
-                                false))
-                              return;
-                            setState(() => _sendingCreds = true);
-                            try {
-                              ref
-                                  .read(provisioningControllerProvider.notifier)
-                                  .setWifiCredentials(
-                                    ssid: _homeSsidCtrl.text.trim(),
-                                    password: _homePwdCtrl.text,
-                                  );
-
-                              await ref
-                                  .read(provisioningControllerProvider.notifier)
-                                  .submitCredentials();
-                              // Navigation to details page happens via the listener above
-                            } finally {
-                              if (mounted)
-                                setState(() => _sendingCreds = false);
-                            }
-                          },
-                    icon: _sendingCreds
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                    label: const Text('Send credentials'),
-                  ),
-                ],
               ),
             ),
           ),
 
-          _Section(
-            title: 'Advanced',
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => ref
-                      .read(provisioningControllerProvider.notifier)
-                      .reprovision(),
-                  icon: const Icon(Icons.settings_backup_restore),
-                  label: const Text('Re‑enable AP'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => ref
-                      .read(provisioningControllerProvider.notifier)
-                      .factoryReset(),
-                  icon: const Icon(Icons.factory),
-                  label: const Text('Factory reset'),
-                ),
-              ],
+          const SizedBox(height: 16),
+          const Divider(height: 24),
+
+          // Step 3: Finish / enter device details (navigates automatically)
+          Text(
+            'Step 3 — Finalize',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'After the plug joins your home Wi‑Fi, we’ll take you to fill in the device ID and details.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _verifyAp(ProvisioningService provisioning) async {
+    setState(() {
+      _verifying = true;
+      _verifyError = null;
+    });
+
+    try {
+      // Best-effort ping
+      final ok = await provisioning.pingDevice();
+      if (!mounted) return;
+      if (ok) {
+        setState(() {
+          _verified = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Device AP verified'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        setState(
+          () => _verifyError =
+              'Could not reach the device. Make sure you are connected to "$deviceApSsid".',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
+  Future<void> _tryAutoConnect(ProvisioningService provisioning) async {
+    setState(() {
+      _verifying = true;
+      _verifyError = null;
+    });
+    try {
+      final joined = await provisioning.connectToAp(
+        deviceSsid: deviceApSsid,
+        deviceApPassword: '', // open AP per your firmware
+      );
+      if (!mounted) return;
+      if (joined) {
+        final ok = await provisioning.pingDevice();
+        if (!mounted) return;
+        if (ok) {
+          setState(() {
+            _verified = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connected and verified'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          setState(
+            () => _verifyError =
+                'Connected to AP, but device did not respond. Keep Wi‑Fi on this AP and try again.',
+          );
+        }
+      } else {
+        setState(
+          () => _verifyError =
+              'Could not auto-connect. Connect manually to "$deviceApSsid" in Wi‑Fi settings and retry.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
+  Future<void> _sendCredentialsAndWait(ProvisioningService provisioning) async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _sending = true;
+      _sendMessage = 'Sending credentials to device…';
+    });
+
+    try {
+      await provisioning.sendWifiCredentials(
+        ssid: _ssidCtrl.text.trim(),
+        password: _pwdCtrl.text,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _sendMessage =
+            'Credentials sent. Waiting for device to join your Wi‑Fi…';
+      });
+
+      final result = await provisioning.waitForStatus();
+      if (!mounted) return;
+
+      if (result.connected) {
+        setState(() {
+          _sendMessage = 'Connected to ${result.ssid ?? 'your Wi‑Fi'}.';
+        });
+
+        // Ask device to exit AP (best-effort)
+        await provisioning.finalizeDevice();
+
+        await Future.delayed(const Duration(seconds: 2));
+
+        if (!mounted) return;
+        // Navigate to details form to capture deviceId/name/type
+        context.push('/provision/details');
+      } else {
+        setState(() {
+          _sendMessage =
+              result.message ??
+              'Device did not connect in time. You can retry.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_sendMessage!),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sendMessage = 'Failed to send: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Send failed: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+}
+
+class _SuccessBanner extends StatelessWidget {
+  final String text;
+  const _SuccessBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, color: cs.onPrimaryContainer, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: cs.onPrimaryContainer, fontSize: 12),
             ),
           ),
-          const SizedBox(height: 24),
-
-          _StatusPanel(),
         ],
       ),
     );
   }
 }
 
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child});
-  final String title;
-  final Widget child;
+class _ErrorBanner extends StatelessWidget {
+  final String text;
+  final VoidCallback onDismiss;
+  const _ErrorBanner({required this.text, required this.onDismiss});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 10),
-            child,
-          ],
-        ),
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.errorContainer,
+        borderRadius: BorderRadius.circular(8),
       ),
-    );
-  }
-}
-
-class _StatusPanel extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(provisioningControllerProvider);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Status', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            _row('Step', s.step.name),
-            _row('Busy', s.busy ? 'Yes' : 'No'),
-            if ((s.deviceId ?? '').isNotEmpty) _row('Device ID', s.deviceId!),
-            if ((s.ssid ?? '').isNotEmpty) _row('Target SSID', s.ssid!),
-            if ((s.message ?? '').isNotEmpty) _row('Message', s.message!),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _row(String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(8),
       child: Row(
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(k, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Icon(Icons.error, color: cs.onErrorContainer, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: cs.onErrorContainer, fontSize: 12),
+            ),
           ),
-          Expanded(child: Text(v)),
+          TextButton(onPressed: onDismiss, child: const Text('DISMISS')),
         ],
       ),
     );
