@@ -6,91 +6,154 @@ import 'device_repo.dart';
 
 class RealtimeRepository {
   final DeviceRepository _deviceRepository;
-  Timer? _pollingTimer;
-  final StreamController<SensorReading> _readingController =
-      StreamController.broadcast();
-
-  int _consecutiveErrors = 0;
-  static const int _maxConsecutiveErrors = 5;
-  static const int _baseDelaySeconds = 5;
-  static const int _maxDelaySeconds = 60;
 
   RealtimeRepository(this._deviceRepository);
 
-  // Stream of real-time sensor readings
-  Stream<SensorReading> get readingStream => _readingController.stream;
+  final Map<String, Timer?> _timers = {};
+  final Map<String, int> _errors = {};
+  final Map<String, List<SensorReading>> _buffers = {};
+  final Map<String, StreamController<List<SensorReading>>> _controllers = {};
 
-  // Start polling for real-time data with exponential backoff on errors
-  void startRealtimeUpdates() {
-    _pollingTimer?.cancel();
-    _consecutiveErrors = 0;
-    _scheduleNextPoll();
-  }
+  static const int defaultIntervalSeconds = 2; // Poll every 2s
+  static const int defaultBufferSeconds = 240; // Keep last 4 minutes
+  static const int _maxConsecutiveErrors = 5;
+  static const int _maxDelaySeconds = 60;
 
-  void _scheduleNextPoll() {
-    final delay = _calculateDelay();
-    _pollingTimer = Timer(Duration(seconds: delay), _performPoll);
-  }
+  // Consider a long gap if no sample for more than this → start fresh
+  static const Duration gapThreshold = Duration(seconds: 15);
 
-  int _calculateDelay() {
-    if (_consecutiveErrors == 0) {
-      return _baseDelaySeconds;
-    }
+  // Broadcast stream of the rolling 4-minute buffer for a deviceId
+  Stream<List<SensorReading>> startRealtimeUpdates({
+    required String deviceId,
+    int intervalSeconds = defaultIntervalSeconds,
+    int bufferSeconds = defaultBufferSeconds,
+  }) {
+    _buffers.putIfAbsent(deviceId, () => <SensorReading>[]);
+    _errors.putIfAbsent(deviceId, () => 0);
 
-    // Exponential backoff: base * 2^errors, capped at max
-    final exponentialDelay =
-        _baseDelaySeconds * pow(2, min(_consecutiveErrors, 4)).toInt();
-    return min(exponentialDelay, _maxDelaySeconds);
-  }
+    final controller = _controllers.putIfAbsent(
+      deviceId,
+      () => StreamController<List<SensorReading>>.broadcast(),
+    );
 
-  void _performPoll() async {
-    try {
-      final reading = await _deviceRepository.getLatestReading();
-      _readingController.add(reading);
-
-      // Reset error count on success
-      _consecutiveErrors = 0;
-
-      // Schedule next poll with normal interval
-      _scheduleNextPoll();
-    } catch (e) {
-      _consecutiveErrors++;
-
-      print('Error fetching real-time data (attempt $_consecutiveErrors): $e');
-
-      // Stop polling after too many consecutive errors
-      if (_consecutiveErrors >= _maxConsecutiveErrors) {
-        print('Too many consecutive errors. Stopping real-time updates.');
-        _readingController.addError(
-          'Real-time data unavailable. Device may be offline.',
+    Future<void> poll() async {
+      try {
+        final reading = await _deviceRepository.getLatestReadingForDevice(
+          deviceId,
         );
-        return;
+
+        if (reading != null) {
+          final buf = _buffers[deviceId]!;
+          final newTs = DateTime.parse(reading.timestamp);
+
+          // If there's a long gap, start fresh (don't connect over the gap)
+          if (buf.isNotEmpty) {
+            final lastTs = DateTime.parse(buf.last.timestamp);
+            if (newTs.difference(lastTs) > gapThreshold) {
+              buf.clear();
+            }
+          }
+
+          // Append if new timestamp
+          if (buf.isEmpty || buf.last.timestamp != reading.timestamp) {
+            buf.add(reading);
+          }
+
+          // TIME-BASED TRIM: only keep samples newer than (newTs - bufferSeconds)
+          final cutoff = newTs.subtract(Duration(seconds: bufferSeconds));
+          while (buf.isNotEmpty &&
+              DateTime.parse(buf.first.timestamp).isBefore(cutoff)) {
+            buf.removeAt(0);
+          }
+
+          // Safety bound by count too (in case sample rate increases)
+          final maxCount = max(1, bufferSeconds ~/ max(1, intervalSeconds));
+          if (buf.length > maxCount) {
+            buf.removeRange(0, buf.length - maxCount);
+          }
+
+          controller.add(List.unmodifiable(buf));
+        }
+
+        // "no data" is normal; reset errors and schedule next poll
+        _errors[deviceId] = 0;
+        _scheduleNextPoll(deviceId, intervalSeconds, poll);
+      } catch (e) {
+        final newErr = (_errors[deviceId] ?? 0) + 1;
+        _errors[deviceId] = newErr;
+
+        if (newErr >= _maxConsecutiveErrors) {
+          controller.addError('Realtime unavailable: $e');
+          stopRealtimeUpdates(deviceId);
+          return;
+        }
+        _scheduleNextPoll(deviceId, intervalSeconds, poll);
       }
-
-      // Schedule next poll with exponential backoff
-      _scheduleNextPoll();
     }
+
+    // Emit current (possibly empty) buffer immediately (no prefill)
+    controller.add(List.unmodifiable(_buffers[deviceId]!));
+
+    // Kick off polling
+    _scheduleNextPoll(deviceId, intervalSeconds, poll);
+
+    return controller.stream;
   }
 
-  // Stop real-time updates
-  void stopRealtimeUpdates() {
-    _pollingTimer?.cancel();
-    _pollingTimer = null;
-    _consecutiveErrors = 0;
+  void _scheduleNextPoll(
+    String deviceId,
+    int baseIntervalSeconds,
+    Future<void> Function() poll,
+  ) {
+    final err = _errors[deviceId] ?? 0;
+    final delay = err == 0
+        ? baseIntervalSeconds
+        : min(
+            baseIntervalSeconds * pow(2, min(err, 4)).toInt(),
+            _maxDelaySeconds,
+          );
+
+    _timers[deviceId]?.cancel();
+    _timers[deviceId] = Timer(Duration(seconds: delay), () {
+      poll(); // ignore unawaited
+    });
   }
 
-  // Get single reading
-  Future<SensorReading> getCurrentReading() async {
-    return await _deviceRepository.getLatestReading();
+  void stopRealtimeUpdates(String deviceId) {
+    _timers[deviceId]?.cancel();
+    _timers.remove(deviceId);
+    _errors.remove(deviceId);
+    _buffers.remove(deviceId);
+    _controllers[deviceId]?.close();
+    _controllers.remove(deviceId);
   }
 
   void dispose() {
-    _pollingTimer?.cancel();
-    _readingController.close();
+    for (final t in _timers.values) {
+      t?.cancel();
+    }
+    for (final c in _controllers.values) {
+      c.close();
+    }
+    _timers.clear();
+    _errors.clear();
+    _buffers.clear();
+    _controllers.clear();
   }
 }
 
 final realtimeRepositoryProvider = Provider<RealtimeRepository>((ref) {
   final deviceRepository = ref.read(deviceRepositoryProvider);
-  return RealtimeRepository(deviceRepository);
+  final repo = RealtimeRepository(deviceRepository);
+  ref.onDispose(repo.dispose);
+  return repo;
 });
+
+// StreamProvider to consume in UI: ref.watch(realtimeBufferStreamProvider(deviceId))
+final realtimeBufferStreamProvider =
+    StreamProvider.family<List<SensorReading>, String>((ref, deviceId) {
+      final repo = ref.read(realtimeRepositoryProvider);
+      final stream = repo.startRealtimeUpdates(deviceId: deviceId);
+      ref.onDispose(() => repo.stopRealtimeUpdates(deviceId));
+      return stream;
+    });

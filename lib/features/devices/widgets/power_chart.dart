@@ -128,7 +128,7 @@ class PowerChart extends StatelessWidget {
               lineBarsData: [
                 LineChartBarData(
                   spots: spots,
-                  isCurved: true,
+                  isCurved: false,
                   color: Colors.blue,
                   barWidth: 2,
                   isStrokeCapRound: true,

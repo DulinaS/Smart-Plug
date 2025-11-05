@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smart_plug/features/devices/application/user_devices_controller.dart';
 import 'package:smart_plug/features/onboarding/domain/plug_types.dart';
-// NEW: controls
 import 'package:smart_plug/features/device_detail/presentation/widgets/device_control_card.dart';
+// Realtime
+import '../../../data/repositories/realtime_repo.dart';
+import '../widgets/power_chart.dart';
 
 class DeviceDetailScreen extends ConsumerStatefulWidget {
   final String deviceId;
@@ -77,6 +79,9 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
             ),
           );
         }
+
+        // Subscribe to realtime buffer (last 4 minutes, 2s polling)
+        final live = ref.watch(realtimeBufferStreamProvider(device.deviceId));
 
         return Scaffold(
           appBar: AppBar(
@@ -176,10 +181,44 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
 
               const SizedBox(height: 16),
 
-              // NEW: Controls (uses /device/command via ControlRepository)
+              // Controls (uses /device/command via ControlRepository)
               DeviceControlCard(deviceId: device.deviceId),
 
-              // Telemetry/charts will be added later
+              const SizedBox(height: 16),
+
+              // Realtime chart + stats
+              Card(
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Realtime',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      live.when(
+                        data: (buffer) => PowerChart(sensorData: buffer),
+                        loading: () => const PowerChart(sensorData: []),
+                        error: (e, _) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Realtime unavailable: $e',
+                              style: TextStyle(color: Colors.red[700]),
+                            ),
+                            const SizedBox(height: 8),
+                            const PowerChart(sensorData: []),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );
