@@ -100,7 +100,7 @@ class PowerChart extends StatelessWidget {
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 50,
-                    getTitlesWidget: (value, meta) => Text(
+                    getTitlesWidget: (value, _) => Text(
                       '${value.toInt()}W',
                       style: const TextStyle(fontSize: 10),
                     ),
@@ -111,7 +111,7 @@ class PowerChart extends StatelessWidget {
                     showTitles: true,
                     reservedSize: 30,
                     interval: (sensorData.length / 5).ceil().toDouble(),
-                    getTitlesWidget: (value, meta) {
+                    getTitlesWidget: (value, _) {
                       final i = value.toInt();
                       if (i >= 0 && i < sensorData.length) {
                         final t = DateTime.parse(sensorData[i].timestamp);
@@ -142,7 +142,7 @@ class PowerChart extends StatelessWidget {
               lineBarsData: [
                 LineChartBarData(
                   spots: spots,
-                  isCurved: false,
+                  isCurved: false, // ensure no overshoot at OFF transitions
                   color: Colors.blue,
                   barWidth: 2,
                   isStrokeCapRound: true,
@@ -182,7 +182,7 @@ class PowerChart extends StatelessWidget {
     final s = r.state?.toUpperCase();
     if (s == 'ON') return true;
     if (s == 'OFF') return false;
-    // Should be rare; fallback if state missing
+    // Fallback only if backend state missing
     return r.power > 1.0 || r.current > 0.05;
   }
 
