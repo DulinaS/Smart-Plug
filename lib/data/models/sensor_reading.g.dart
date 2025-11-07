@@ -12,6 +12,7 @@ SensorReading _$SensorReadingFromJson(Map<String, dynamic> json) =>
       current: (json['current'] as num).toDouble(),
       power: (json['power'] as num).toDouble(),
       timestamp: json['timestamp'] as String,
+      state: json['state'] as String?,
     );
 
 Map<String, dynamic> _$SensorReadingToJson(SensorReading instance) =>
@@ -20,6 +21,7 @@ Map<String, dynamic> _$SensorReadingToJson(SensorReading instance) =>
       'current': instance.current,
       'power': instance.power,
       'timestamp': instance.timestamp,
+      'state': instance.state,
     };
 
 DeviceCommand _$DeviceCommandFromJson(Map<String, dynamic> json) =>

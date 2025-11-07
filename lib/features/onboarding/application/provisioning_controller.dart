@@ -6,17 +6,26 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:smart_plug/core/config/env.dart';
 import 'package:smart_plug/core/services/provisioning_service.dart';
-import 'package:smart_plug/data/repositories/device_repo.dart';
-import 'package:smart_plug/core/config/env.dart'; // ADDED
+import 'package:smart_plug/data/repositories/user_device_repo.dart';
 
+/// Provisioning flow (Option B: pre-provisioned device; link only)
+/// 1) Connect to device AP (optionally auto-connect).
+/// 2) Verify device AP is reachable (/ping).
+/// 3) Send home Wi‑Fi credentials to device (/config).
+/// 4) Wait until device reports connected (/status).
+/// 5) Finalize device (turn AP off).
+/// 6) Wait for phone internet/DNS to be restored.
+/// 7) Link device to current user in User Device Service (/user-device) with deviceId, deviceName, roomName, plugType.
+/// 8) Done.
 enum ProvisioningStep {
   pickMethod,
   connectToDeviceAP,
   enterWifiCredentials,
   sendingCredentials,
   waitingForDevice,
-  registeringDevice,
+  linkingDevice,
   success,
   error,
 }
@@ -27,9 +36,10 @@ class ProvisioningState {
   final String? selectedMethod;
   final String? ssid;
   final String? password;
-  final String? deviceName;
-  final String? room;
   final String? deviceId;
+  final String? deviceName;
+  final String? roomName;
+  final String? plugType;
   final String? message;
   final bool busy;
 
@@ -38,9 +48,10 @@ class ProvisioningState {
     this.selectedMethod,
     this.ssid,
     this.password,
-    this.deviceName,
-    this.room,
     this.deviceId,
+    this.deviceName,
+    this.roomName,
+    this.plugType,
     this.message,
     this.busy = false,
   });
@@ -50,9 +61,10 @@ class ProvisioningState {
     String? selectedMethod,
     String? ssid,
     String? password,
-    String? deviceName,
-    String? room,
     String? deviceId,
+    String? deviceName,
+    String? roomName,
+    String? plugType,
     String? message,
     bool? busy,
   }) {
@@ -61,28 +73,34 @@ class ProvisioningState {
       selectedMethod: selectedMethod ?? this.selectedMethod,
       ssid: ssid ?? this.ssid,
       password: password ?? this.password,
-      deviceName: deviceName ?? this.deviceName,
-      room: room ?? this.room,
       deviceId: deviceId ?? this.deviceId,
+      deviceName: deviceName ?? this.deviceName,
+      roomName: roomName ?? this.roomName,
+      plugType: plugType ?? this.plugType,
       message: message ?? this.message,
       busy: busy ?? this.busy,
     );
   }
 
-  static ProvisioningState initial() =>
-      const ProvisioningState(step: ProvisioningStep.pickMethod);
+  // CHANGED: start directly on the SoftAP path so UI does not need to mutate provider in initState.
+  static ProvisioningState initial() => const ProvisioningState(
+    step: ProvisioningStep.connectToDeviceAP,
+    selectedMethod: 'softap',
+  );
 }
 
 class ProvisioningController extends StateNotifier<ProvisioningState> {
-  ProvisioningController(this._prov, this._devices)
+  ProvisioningController(this._prov, this._userDevices)
     : super(ProvisioningState.initial());
 
   final ProvisioningService _prov;
-  final DeviceRepository _devices;
+  final UserDeviceRepository _userDevices;
 
-  // Preflight the SAME host that add-device will use
-  static final String _deviceApiHost = Uri.parse(AppConfig.deviceBaseUrl).host;
+  static final String _userDeviceApiHost = Uri.parse(
+    AppConfig.userDeviceBaseUrl,
+  ).host;
 
+  // You can still keep this for future UI toggles between methods.
   void pickMethod(String method) {
     state = state.copyWith(
       selectedMethod: method,
@@ -100,10 +118,12 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
         busy: true,
         message: 'Connecting to device hotspot...',
       );
+
       await _prov.connectToAp(
         deviceSsid: deviceSsid ?? '',
         deviceApPassword: deviceApPassword,
       );
+
       state = state.copyWith(
         busy: false,
         message:
@@ -151,8 +171,18 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
     state = state.copyWith(ssid: ssid, password: password);
   }
 
-  void setMetadata({required String deviceName, required String room}) {
-    state = state.copyWith(deviceName: deviceName, room: room);
+  void setDeviceDetails({
+    required String deviceId,
+    required String deviceName,
+    required String roomName,
+    required String plugType,
+  }) {
+    state = state.copyWith(
+      deviceId: deviceId.trim(),
+      deviceName: deviceName.trim(),
+      roomName: roomName.trim(),
+      plugType: plugType.trim(),
+    );
   }
 
   Future<void> submitCredentials() async {
@@ -162,11 +192,13 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
       state = state.copyWith(message: 'SSID is required');
       return;
     }
+
     state = state.copyWith(
       step: ProvisioningStep.sendingCredentials,
       busy: true,
       message: 'Sending Wi‑Fi credentials...',
     );
+
     try {
       await _prov.sendWifiCredentials(ssid: ssid, password: pwd);
       state = state.copyWith(
@@ -183,11 +215,12 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
     }
   }
 
-  Future<void> waitAndRegister() async {
+  Future<void> waitAndLink() async {
     state = state.copyWith(
       busy: true,
       message: 'Verifying device is online...',
     );
+
     late final StatusResult result;
     try {
       result = await _prov.waitForStatus();
@@ -217,7 +250,7 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
 
     state = state.copyWith(message: 'Restoring internet connection...');
     final online = await _waitForInternetAndDns(
-      _deviceApiHost,
+      _userDeviceApiHost,
       timeout: const Duration(seconds: 60),
     );
     if (!online) {
@@ -230,37 +263,56 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
       return;
     }
 
-    final id = result.deviceId ?? state.deviceId ?? _fallbackDeviceId();
+    final deviceId =
+        (state.deviceId?.isNotEmpty == true ? state.deviceId : result.deviceId)
+            ?.trim();
+    final deviceName = (state.deviceName ?? 'Smart Plug').trim();
+    final roomName = (state.roomName ?? 'Living Room').trim();
+    final plugType = (state.plugType ?? 'Custom').trim();
+
+    if (deviceId == null || deviceId.isEmpty) {
+      state = state.copyWith(
+        step: ProvisioningStep.error,
+        busy: false,
+        message:
+            'Device ID is required. Enter the ID from the sticker before continuing.',
+      );
+      return;
+    }
+
     state = state.copyWith(
-      step: ProvisioningStep.registeringDevice,
-      deviceId: id,
-      message: 'Registering device...',
+      step: ProvisioningStep.linkingDevice,
+      message: 'Linking device to your account...',
     );
 
     Object? lastErr;
     for (int attempt = 0; attempt < 5; attempt++) {
       try {
-        await _devices.addDevice(
-          id,
-          state.deviceName ?? 'Smart Plug',
-          state.room ?? 'Living Room',
+        await _userDevices.linkDeviceToCurrentUser(
+          deviceId: deviceId,
+          deviceName: deviceName,
+          roomName: roomName,
+          plugType: plugType,
         );
+
         state = state.copyWith(
+          deviceId: deviceId,
           step: ProvisioningStep.success,
           busy: false,
-          message: 'Device added successfully',
+          message: 'Device linked successfully',
         );
         return;
       } catch (e, st) {
         lastErr = e;
-        debugPrint('addDevice attempt ${attempt + 1} failed: $e\n$st');
-        await Future.delayed(Duration(seconds: 2 << attempt)); // 2,4,8,16,32
+        debugPrint('Link attempt ${attempt + 1} failed: $e\n$st');
+        await Future.delayed(Duration(seconds: 2 << attempt));
       }
     }
+
     state = state.copyWith(
       step: ProvisioningStep.error,
       busy: false,
-      message: 'Backend registration failed: $lastErr',
+      message: 'Linking failed: $lastErr',
     );
   }
 
@@ -331,14 +383,11 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
     }
     return false;
   }
-
-  String _fallbackDeviceId() =>
-      'SmartPlug-${DateTime.now().millisecondsSinceEpoch}';
 }
 
 final provisioningControllerProvider =
     StateNotifierProvider<ProvisioningController, ProvisioningState>((ref) {
       final service = ref.read(provisioningServiceProvider);
-      final devices = ref.read(deviceRepositoryProvider);
-      return ProvisioningController(service, devices);
+      final userDevices = ref.read(userDeviceRepositoryProvider);
+      return ProvisioningController(service, userDevices);
     });

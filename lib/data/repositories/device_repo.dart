@@ -1,10 +1,10 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
-import '../../core/config/env.dart';
-import '../models/device.dart';
-import '../models/sensor_reading.dart';
 import '../../core/services/secure_store.dart';
+import '../../core/config/env.dart';
+import '../models/sensor_reading.dart';
 
 class DeviceRepository {
   final HttpClient _httpClient;
@@ -12,31 +12,99 @@ class DeviceRepository {
 
   DeviceRepository(this._httpClient, this._secureStore);
 
-  Future<SensorReading> getLatestReading() async {
+  // Fetch the latest reading for a device.
+  // Returns null when the API effectively says "no data" (empty/null/wrapped) so callers treat it as normal.
+  // Adds +5h 30m to convert US-EAST-1 time to Sri Lanka time per your requirement.
+  Future<SensorReading?> getLatestReadingForDevice(String deviceId) async {
     try {
-      final response = await _httpClient.dio.get(
+      final res = await _httpClient.dio.post(
         '${AppConfig.dataBaseUrl}/latest',
+        data: {'deviceId': deviceId},
       );
-      return SensorReading.fromApiResponse(response.data);
+
+      if (res.statusCode == 204) return null;
+
+      dynamic root = res.data;
+      if (root == null) return null;
+
+      // String body → JSON decode if possible; else treat as "no data"
+      if (root is String) {
+        final trimmed = root.trim().toLowerCase();
+        if (trimmed.isEmpty ||
+            trimmed == 'null' ||
+            trimmed == 'no' ||
+            trimmed == 'none') {
+          return null;
+        }
+        try {
+          root = json.decode(root);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      // API Gateway wrapping
+      if (root is Map<String, dynamic> && root['body'] != null) {
+        final body = root['body'];
+        if (body is String) {
+          final trimmed = body.trim().toLowerCase();
+          if (trimmed.isEmpty ||
+              trimmed == 'null' ||
+              trimmed == 'no' ||
+              trimmed == 'none') {
+            return null;
+          }
+          root = json.decode(body);
+        } else if (body is Map<String, dynamic>) {
+          root = body;
+        }
+      }
+
+      if (root is! Map<String, dynamic>) return null;
+      final map = root as Map<String, dynamic>;
+
+      // Message-like responses that mean "no data"
+      final msg = (map['message'] ?? map['status'] ?? '')
+          .toString()
+          .toLowerCase();
+      if (msg.contains('no data') ||
+          msg.contains('empty') ||
+          msg.contains('not found')) {
+        return null;
+      }
+
+      // Extract required fields (0 values are valid)
+      final tsStr = map['timestamp']?.toString();
+      final current = (map['current'] as num?)?.toDouble();
+      final voltage = (map['voltage'] as num?)?.toDouble();
+      final power = (map['power'] as num?)?.toDouble();
+      if (tsStr == null ||
+          current == null ||
+          voltage == null ||
+          power == null) {
+        return null;
+      }
+
+      // Convert to Sri Lanka time (+5h 03m)
+      final serverTs = DateTime.parse(tsStr);
+      final slTs = serverTs.add(const Duration(hours: 5, minutes: 30));
+
+      return SensorReading(
+        voltage: voltage,
+        current: current,
+        power: power,
+        timestamp: slTs.toIso8601String(),
+      );
     } on DioException catch (e) {
-      print('DioException in getLatestReading: ${e.type} ${e.message}');
-      return SensorReading(
-        voltage: 230.0 + (DateTime.now().millisecond % 10),
-        current: 1.5 + (DateTime.now().millisecond % 100) / 100,
-        power: 345.0 + (DateTime.now().millisecond % 50),
-        timestamp: DateTime.now().toIso8601String(),
-      );
+      final code = e.response?.statusCode;
+      final body = e.response?.data;
+      throw 'HTTP ${code ?? '?'} fetching latest: ${e.message} ${body ?? ''}';
     } catch (e) {
-      print('Unexpected error in getLatestReading: $e');
-      return SensorReading(
-        voltage: 230.0,
-        current: 1.5,
-        power: 345.0,
-        timestamp: DateTime.now().toIso8601String(),
-      );
+      throw 'Failed to fetch latest reading: $e';
     }
   }
 
+  // Send ON/OFF command
   Future<void> toggleDevice(String deviceId, bool turnOn) async {
     try {
       await _httpClient.dio.post(
@@ -44,160 +112,9 @@ class DeviceRepository {
         data: {'deviceId': deviceId, 'command': turnOn ? 'ON' : 'OFF'},
       );
     } on DioException catch (e) {
-      throw _handleError(e);
+      final code = e.response?.statusCode;
+      throw 'HTTP ${code ?? '?'} sending command: ${e.message}';
     }
-  }
-
-  Future<void> addDevice(String deviceId, String name, String room) async {
-    try {
-      // AWS IoT thingName must match: [a-zA-Z0-9:_-]+
-      final sanitizedThingName = _sanitizeThingName(name);
-      final userId = await _secureStore
-          .getUserId(); // optional if backend derives from JWT
-
-      final data = <String, dynamic>{
-        'deviceId': deviceId,
-        // Send a safe thingName via deviceName, plus keep a displayName (UI label with spaces)
-        'deviceName': sanitizedThingName,
-        'displayName': name,
-        'room': room,
-      };
-      if (userId != null) {
-        data['userId'] = userId;
-      }
-
-      final res = await _httpClient.dio.post(
-        '${AppConfig.deviceBaseUrl}/add-device',
-        data: data,
-      );
-
-      if (res.statusCode != 200 && res.statusCode != 201) {
-        throw 'Unexpected response: ${res.statusCode}';
-      }
-    } on DioException catch (e) {
-      print(
-        'addDevice error: status=${e.response?.statusCode} data=${e.response?.data} type=${e.type} message=${e.message}',
-      );
-      throw _handleError(e);
-    }
-  }
-
-  // Replace disallowed chars with '-', collapse repeats, trim '-'
-  String _sanitizeThingName(String input) {
-    final replaced = input.replaceAll(RegExp(r'[^a-zA-Z0-9:_-]'), '-');
-    final collapsed = replaced.replaceAll(RegExp(r'-{2,}'), '-');
-    final trimmed = collapsed
-        .replaceAll(RegExp(r'^-+'), '')
-        .replaceAll(RegExp(r'-+$'), '');
-    return trimmed.isEmpty ? 'Device' : trimmed;
-  }
-
-  Future<void> updateDevice(
-    String deviceId, {
-    String? name,
-    String? room,
-  }) async {
-    try {
-      final data = <String, dynamic>{'deviceId': deviceId};
-      if (name != null) {
-        data['deviceName'] = _sanitizeThingName(name);
-        data['displayName'] = name;
-      }
-      if (room != null) data['room'] = room;
-
-      await _httpClient.dio.put(
-        '${AppConfig.deviceBaseUrl}/update-device',
-        data: data,
-      );
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<void> deleteDevice(String deviceId) async {
-    try {
-      await _httpClient.dio.delete(
-        '${AppConfig.deviceBaseUrl}/delete-device',
-        data: {'deviceId': deviceId},
-      );
-    } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  Future<List<Device>> getDevices() async {
-    try {
-      final reading = await getLatestReading();
-
-      final device = Device(
-        id: 'LivingRoomESP325',
-        name: 'Smart Plug Device',
-        room: 'Living Room',
-        status: DeviceExtensions.statusFromSensorReading(reading),
-        lastSeen: DateTime.parse(reading.timestamp),
-        firmwareVersion: 'v1.0.0',
-        isOnline: true,
-        config: const DeviceConfig(
-          maxCurrent: 16.0,
-          maxPower: 3680.0,
-          safetyEnabled: true,
-          reportInterval: 5,
-        ),
-      );
-
-      return [device];
-    } catch (e) {
-      final mockReading = SensorReading(
-        voltage: 230.5,
-        current: 2.1,
-        power: 484.05,
-        timestamp: DateTime.now().toIso8601String(),
-      );
-
-      final mockDevice = Device(
-        id: 'LivingRoomESP324',
-        name: 'Smart Plug (Demo)',
-        room: 'Living Room',
-        status: DeviceExtensions.statusFromSensorReading(mockReading),
-        lastSeen: DateTime.now(),
-        firmwareVersion: 'v1.0.0',
-        isOnline: false,
-        config: const DeviceConfig(
-          maxCurrent: 16.0,
-          maxPower: 3680.0,
-          safetyEnabled: true,
-          reportInterval: 5,
-        ),
-      );
-
-      return [mockDevice];
-    }
-  }
-
-  Future<Device> getDevice(String deviceId) async {
-    final devices = await getDevices();
-    return devices.firstWhere(
-      (d) => d.id == deviceId,
-      orElse: () => throw Exception('Device not found'),
-    );
-  }
-
-  String _handleError(DioException e) {
-    final code = e.response?.statusCode;
-    if (code == 401) return 'Not authenticated. Please log in again.';
-    if (code == 403) return 'Access denied';
-    if (code == 404) return 'Device not found';
-    if (code == 409) return 'Device already registered';
-    if (e.type == DioExceptionType.connectionTimeout)
-      return 'Connection timeout';
-    if (e.type == DioExceptionType.receiveTimeout)
-      return 'Device not responding';
-    if (e.type == DioExceptionType.unknown)
-      return 'Network error. Please check your connection.';
-    final msg = e.response?.data is Map<String, dynamic>
-        ? e.response?.data['error']
-        : null;
-    return msg is String && msg.isNotEmpty ? msg : 'Device operation failed';
   }
 }
 

@@ -2,6 +2,35 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'user.g.dart';
 
+/// Billing / plan type for the user account.
+enum BillingType { general, enterprise }
+
+extension BillingTypeX on BillingType {
+  String toApiString() {
+    switch (this) {
+      case BillingType.general:
+        return 'General';
+      case BillingType.enterprise:
+        return 'Enterprise';
+    }
+  }
+
+  static BillingType fromString(String? raw) {
+    if (raw == null) return BillingType.general;
+    final v = raw.trim().toLowerCase();
+    switch (v) {
+      case 'general':
+        return BillingType.general;
+      case 'enterprise':
+        return BillingType.enterprise;
+      case 'enterpise': // tolerate common misspelling
+        return BillingType.enterprise;
+      default:
+        return BillingType.general;
+    }
+  }
+}
+
 @JsonSerializable()
 class User {
   final String id;
@@ -9,7 +38,10 @@ class User {
   final String username;
   final String? displayName;
   final DateTime createdAt;
-  final TariffSettings? tariffSettings;
+
+  /// Billing type (General / Enterprise)
+  @JsonKey(fromJson: _billingFromJson, toJson: _billingToJson)
+  final BillingType billingType;
 
   const User({
     required this.id,
@@ -17,39 +49,31 @@ class User {
     required this.username,
     this.displayName,
     required this.createdAt,
-    this.tariffSettings,
+    required this.billingType,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
   Map<String, dynamic> toJson() => _$UserToJson(this);
-}
 
-@JsonSerializable()
-class TariffSettings {
-  final double slab1Rate; // 0-30 units
-  final double slab2Rate; // 31-60 units
-  final double slab3Rate; // 61-90 units
-  final double slab4Rate; // 91+ units
-  final double fixedCharge;
+  static BillingType _billingFromJson(dynamic v) =>
+      BillingTypeX.fromString(v?.toString());
+  static String _billingToJson(BillingType t) => t.toApiString();
 
-  const TariffSettings({
-    required this.slab1Rate,
-    required this.slab2Rate,
-    required this.slab3Rate,
-    required this.slab4Rate,
-    required this.fixedCharge,
-  });
-
-  factory TariffSettings.fromJson(Map<String, dynamic> json) =>
-      _$TariffSettingsFromJson(json);
-  Map<String, dynamic> toJson() => _$TariffSettingsToJson(this);
-
-  // CEB default rates (2024)
-  factory TariffSettings.cebDefault() => const TariffSettings(
-    slab1Rate: 7.85,
-    slab2Rate: 10.00,
-    slab3Rate: 27.75,
-    slab4Rate: 32.00,
-    fixedCharge: 400.00,
-  );
+  User copyWith({
+    String? id,
+    String? email,
+    String? username,
+    String? displayName,
+    DateTime? createdAt,
+    BillingType? billingType,
+  }) {
+    return User(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      username: username ?? this.username,
+      displayName: displayName ?? this.displayName,
+      createdAt: createdAt ?? this.createdAt,
+      billingType: billingType ?? this.billingType,
+    );
+  }
 }

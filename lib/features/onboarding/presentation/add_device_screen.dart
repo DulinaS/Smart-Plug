@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import 'package:smart_plug/features/onboarding/application/provisioning_controller.dart';
+import '../../onboarding/domain/plug_types.dart';
+import '../../../core/services/provisioning_service.dart';
 
 class AddDeviceScreen extends ConsumerStatefulWidget {
   const AddDeviceScreen({super.key});
@@ -11,536 +15,380 @@ class AddDeviceScreen extends ConsumerStatefulWidget {
 }
 
 class _AddDeviceScreenState extends ConsumerState<AddDeviceScreen> {
+  static const deviceApSsid = 'ESP32_Config'; // matches your ESP32 define
+
+  bool _verifying = false;
+  bool _verified = false;
+  String? _verifyError;
+
   final _ssidCtrl = TextEditingController();
   final _pwdCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController(text: 'Smart Plug');
-  final _roomCtrl = TextEditingController(text: 'Living Room');
+  final _formKey = GlobalKey<FormState>();
+
+  bool _sending = false;
+  String? _sendMessage;
 
   @override
   void dispose() {
     _ssidCtrl.dispose();
     _pwdCtrl.dispose();
-    _nameCtrl.dispose();
-    _roomCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(provisioningControllerProvider);
-    final ctrl = ref.read(provisioningControllerProvider.notifier);
+    final provisioning = ref.watch(provisioningServiceProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Smart Plug')),
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
-          children: [
-            if (state.message != null)
-              MaterialBanner(
-                content: Text(state.message!),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
-                    },
-                    child: const Text('OK'),
+      appBar: AppBar(
+        title: const Text('Add Device'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(),
+          tooltip: 'Back',
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Step 1: Connect to device AP
+          Text(
+            'Step 1 — Connect to the device hotspot',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Open Wi‑Fi settings and connect to "$deviceApSsid". '
+            'Return to this screen and tap Verify.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _verifying ? null : () => _verifyAp(provisioning),
+                  icon: _verifying
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle),
+                  label: Text(
+                    _verifying ? 'Verifying…' : 'I am connected • Verify',
                   ),
-                ],
+                ),
               ),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: KeyedSubtree(
-                  key: ValueKey(state.step),
-                  child: _buildStep(context, state, ctrl),
+              const SizedBox(width: 8),
+              if (Platform.isAndroid)
+                OutlinedButton.icon(
+                  onPressed: _verifying
+                      ? null
+                      : () => _tryAutoConnect(provisioning),
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('Auto-connect'),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          if (_verified)
+            _SuccessBanner(
+              text: 'Device AP verified. You can now enter your Wi‑Fi.',
+            )
+          else if (_verifyError != null)
+            _ErrorBanner(
+              text: _verifyError!,
+              onDismiss: () => setState(() => _verifyError = null),
+            ),
+
+          const SizedBox(height: 16),
+          const Divider(height: 24),
+
+          // Step 2: Home Wi‑Fi credentials (enabled after verify)
+          Text(
+            'Step 2 — Enter your home Wi‑Fi',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Opacity(
+            opacity: _verified ? 1 : 0.5,
+            child: IgnorePointer(
+              ignoring: !_verified,
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _ssidCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Wi‑Fi SSID (2.4 GHz)',
+                        prefixIcon: Icon(Icons.wifi),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'SSID is required'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _pwdCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(),
+                      ),
+                      // Some networks are open; allow empty password
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _sending
+                            ? null
+                            : () => _sendCredentialsAndWait(provisioning),
+                        icon: _sending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(_sending ? 'Sending…' : 'Send credentials'),
+                      ),
+                    ),
+                    if (_sendMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _sendMessage!,
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStep(
-    BuildContext context,
-    ProvisioningState state,
-    ProvisioningController ctrl,
-  ) {
-    switch (state.step) {
-      case ProvisioningStep.pickMethod:
-        return _PickMethod(onSelect: (m) => ctrl.pickMethod(m));
-
-      case ProvisioningStep.connectToDeviceAP:
-        return _ConnectAPStep(
-          busy: state.busy,
-          message: state.message,
-          onConnectAuto: () async {
-            FocusScope.of(context).unfocus();
-            await _showConnectDialog(context, ctrl);
-          },
-          onVerify: () async {
-            FocusScope.of(context).unfocus();
-            await ctrl.verifyDeviceAP();
-          },
-        );
-
-      case ProvisioningStep.enterWifiCredentials:
-        return _CredentialsStep(
-          ssidCtrl: _ssidCtrl,
-          pwdCtrl: _pwdCtrl,
-          nameCtrl: _nameCtrl,
-          roomCtrl: _roomCtrl,
-          onNext: () async {
-            FocusScope.of(context).unfocus();
-            ctrl.setWifiCredentials(
-              ssid: _ssidCtrl.text.trim(),
-              password: _pwdCtrl.text,
-            );
-            ctrl.setMetadata(
-              deviceName: _nameCtrl.text.trim(),
-              room: _roomCtrl.text.trim(),
-            );
-            await ctrl.submitCredentials();
-          },
-        );
-
-      case ProvisioningStep.sendingCredentials:
-        return const _ProgressStep(
-          title: 'Sending Wi‑Fi Credentials',
-          message: 'Please wait...',
-        );
-
-      case ProvisioningStep.waitingForDevice:
-        return _WaitingStep(
-          message: state.message ?? 'Waiting for device...',
-          busy: state.busy,
-          onContinue: () async {
-            FocusScope.of(context).unfocus();
-            await ctrl.waitAndRegister();
-          },
-        );
-
-      case ProvisioningStep.registeringDevice:
-        return const _ProgressStep(
-          title: 'Registering Device',
-          message: 'Adding to your account...',
-        );
-
-      case ProvisioningStep.success:
-        return _ResultStep(
-          success: true,
-          message: state.message ?? 'Device added!',
-          onFinish: () => _goHome(context),
-          onAddAnother: () {
-            FocusScope.of(context).unfocus();
-            _clearFields();
-            ctrl.reset();
-          },
-        );
-
-      case ProvisioningStep.error:
-        return _ResultStep(
-          success: false,
-          message: state.message ?? 'Something went wrong.',
-          onFinish: () => _goHome(context),
-          onRetry: () {
-            FocusScope.of(context).unfocus();
-            ctrl.reset();
-          },
-        );
-    }
-  }
-
-  Future<void> _showConnectDialog(
-    BuildContext context,
-    ProvisioningController ctrl,
-  ) async {
-    final apSsidCtrl = TextEditingController();
-    final apPwdCtrl = TextEditingController();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Connect to Device Hotspot'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Enter the device hotspot SSID (e.g., SmartPlug‑1234).'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: apSsidCtrl,
-              decoration: const InputDecoration(labelText: 'Device SSID'),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: apPwdCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Device AP Password (if any)',
-              ),
-              obscureText: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
           ),
-          FilledButton(
-            onPressed: () async {
-              final ssid = apSsidCtrl.text.trim();
-              final pass = apPwdCtrl.text;
-              Navigator.of(ctx).pop();
-              if (ssid.isNotEmpty) {
-                FocusScope.of(context).unfocus();
-                await ctrl.connectToAp(
-                  deviceSsid: ssid,
-                  deviceApPassword: pass.isEmpty ? null : pass,
-                );
-              }
-            },
-            child: const Text('Connect'),
+
+          const SizedBox(height: 16),
+          const Divider(height: 24),
+
+          // Step 3: Finish / enter device details (navigates automatically)
+          Text(
+            'Step 3 — Finalize',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'After the plug joins your home Wi‑Fi, we’ll take you to fill in the device ID and details.',
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
       ),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      apSsidCtrl.dispose();
-      apPwdCtrl.dispose();
+  }
+
+  Future<void> _verifyAp(ProvisioningService provisioning) async {
+    setState(() {
+      _verifying = true;
+      _verifyError = null;
     });
-  }
 
-  void _clearFields() {
-    _ssidCtrl.clear();
-    _pwdCtrl.clear();
-    _nameCtrl.text = 'Smart Plug';
-    _roomCtrl.text = 'Living Room';
-  }
-
-  void _goHome(BuildContext context) {
-    FocusScope.of(context).unfocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Prefer replacing the stack to avoid "popped last page" assertions.
-      try {
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-      } catch (_) {
-        // If '/' is not registered, try maybePop; if cannot pop, do nothing.
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).maybePop();
-        }
-      }
-    });
-  }
-}
-
-// ---------------- UI widgets ----------------
-
-class _PickMethod extends StatelessWidget {
-  const _PickMethod({required this.onSelect});
-  final void Function(String) onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const Text(
-          'Choose Setup Method',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Put your plug into pairing mode (hold the button until the LED blinks).',
-        ),
-        const SizedBox(height: 24),
-        _MethodCard(
-          title: 'Wi‑Fi (SoftAP)',
-          subtitle: 'Connect to device hotspot, send your Wi‑Fi credentials.',
-          icon: Icons.wifi_tethering,
-          onTap: () => onSelect('softap'),
-        ),
-        const SizedBox(height: 12),
-        _MethodCard(
-          title: 'Bluetooth (BLE)',
-          subtitle: 'Pair over BLE. Coming soon.',
-          icon: Icons.bluetooth,
-          onTap: () {},
-          disabled: true,
-        ),
-      ],
-    );
-  }
-}
-
-class _MethodCard extends StatelessWidget {
-  const _MethodCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.onTap,
-    this.disabled = false,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool disabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Card(
-      child: ListTile(
-        leading: Icon(icon, size: 28),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: disabled ? null : onTap,
-      ),
-    );
-    return Opacity(opacity: disabled ? 0.5 : 1, child: card);
-  }
-}
-
-class _ConnectAPStep extends StatelessWidget {
-  const _ConnectAPStep({
-    required this.busy,
-    required this.message,
-    required this.onConnectAuto,
-    required this.onVerify,
-  });
-
-  final bool busy;
-  final String? message;
-  final Future<void> Function() onConnectAuto;
-  final Future<void> Function() onVerify;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const Text(
-          'Connect to Device Hotspot',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Use “Connect automatically” to stay in the app. If it fails, open Wi‑Fi settings and connect manually.',
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.wifi),
-          label: const Text('Connect automatically'),
-          onPressed: busy ? null : onConnectAuto,
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.check_circle_outline),
-          label: const Text('I am connected to the device'),
-          onPressed: busy ? null : onVerify,
-        ),
-        const SizedBox(height: 12),
-        if (busy) const LinearProgressIndicator(),
-        if (message != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(message!),
+    try {
+      // Best-effort ping
+      final ok = await provisioning.pingDevice();
+      if (!mounted) return;
+      if (ok) {
+        setState(() {
+          _verified = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Device AP verified'),
+            backgroundColor: Colors.green,
           ),
-      ],
-    );
+        );
+      } else {
+        setState(
+          () => _verifyError =
+              'Could not reach the device. Make sure you are connected to "$deviceApSsid".',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
   }
-}
 
-class _CredentialsStep extends StatelessWidget {
-  const _CredentialsStep({
-    required this.ssidCtrl,
-    required this.pwdCtrl,
-    required this.nameCtrl,
-    required this.roomCtrl,
-    required this.onNext,
-  });
-
-  final TextEditingController ssidCtrl;
-  final TextEditingController pwdCtrl;
-  final TextEditingController nameCtrl;
-  final TextEditingController roomCtrl;
-  final VoidCallback onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const Text(
-          'Enter Your Wi‑Fi Details',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: ssidCtrl,
-          decoration: const InputDecoration(labelText: 'Wi‑Fi SSID'),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: pwdCtrl,
-          decoration: const InputDecoration(labelText: 'Wi‑Fi Password'),
-          obscureText: true,
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'Device Info (for your labeling)',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(labelText: 'Device Name'),
-          textInputAction: TextInputAction.next,
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: roomCtrl,
-          decoration: const InputDecoration(labelText: 'Room'),
-        ),
-        const SizedBox(height: 24),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.send),
-          label: const Text('Send to Device'),
-          onPressed: onNext,
-        ),
-      ],
-    );
-  }
-}
-
-class _ProgressStep extends StatelessWidget {
-  const _ProgressStep({required this.title, required this.message});
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+  Future<void> _tryAutoConnect(ProvisioningService provisioning) async {
+    setState(() {
+      _verifying = true;
+      _verifyError = null;
+    });
+    try {
+      final joined = await provisioning.connectToAp(
+        deviceSsid: deviceApSsid,
+        deviceApPassword: '', // open AP per your firmware
+      );
+      if (!mounted) return;
+      if (joined) {
+        final ok = await provisioning.pingDevice();
+        if (!mounted) return;
+        if (ok) {
+          setState(() {
+            _verified = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connected and verified'),
+              backgroundColor: Colors.green,
             ),
-            const SizedBox(height: 12),
-            const CircularProgressIndicator(),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
+          );
+        } else {
+          setState(
+            () => _verifyError =
+                'Connected to AP, but device did not respond. Keep Wi‑Fi on this AP and try again.',
+          );
+        }
+      } else {
+        setState(
+          () => _verifyError =
+              'Could not auto-connect. Connect manually to "$deviceApSsid" in Wi‑Fi settings and retry.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
+  Future<void> _sendCredentialsAndWait(ProvisioningService provisioning) async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _sending = true;
+      _sendMessage = 'Sending credentials to device…';
+    });
+
+    try {
+      await provisioning.sendWifiCredentials(
+        ssid: _ssidCtrl.text.trim(),
+        password: _pwdCtrl.text,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _sendMessage =
+            'Credentials sent. Waiting for device to join your Wi‑Fi…';
+      });
+
+      final result = await provisioning.waitForStatus();
+      if (!mounted) return;
+
+      if (result.connected) {
+        setState(() {
+          _sendMessage = 'Connected to ${result.ssid ?? 'your Wi‑Fi'}.';
+        });
+
+        // Ask device to exit AP (best-effort)
+        await provisioning.finalizeDevice();
+
+        await Future.delayed(const Duration(seconds: 2));
+
+        if (!mounted) return;
+        // Navigate to details form to capture deviceId/name/type
+        context.push('/provision/details');
+      } else {
+        setState(() {
+          _sendMessage =
+              result.message ??
+              'Device did not connect in time. You can retry.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_sendMessage!),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _sendMessage = 'Failed to send: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Send failed: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+}
+
+class _SuccessBanner extends StatelessWidget {
+  final String text;
+  const _SuccessBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, color: cs.onPrimaryContainer, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: cs.onPrimaryContainer, fontSize: 12),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _WaitingStep extends StatelessWidget {
-  const _WaitingStep({
-    required this.message,
-    required this.onContinue,
-    required this.busy,
-  });
-  final String message;
-  final Future<void> Function() onContinue;
-  final bool busy;
+class _ErrorBanner extends StatelessWidget {
+  final String text;
+  final VoidCallback onDismiss;
+  const _ErrorBanner({required this.text, required this.onDismiss});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Waiting for Device',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const CircularProgressIndicator(),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.cloud_done),
-              label: const Text('Continue'),
-              onPressed: busy ? null : onContinue,
-            ),
-          ],
-        ),
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.errorContainer,
+        borderRadius: BorderRadius.circular(8),
       ),
-    );
-  }
-}
-
-class _ResultStep extends StatelessWidget {
-  const _ResultStep({
-    required this.success,
-    required this.message,
-    required this.onFinish,
-    this.onRetry,
-    this.onAddAnother,
-  });
-
-  final bool success;
-  final String message;
-  final VoidCallback onFinish;
-  final VoidCallback? onRetry;
-  final VoidCallback? onAddAnother;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              success ? Icons.check_circle : Icons.error,
-              size: 64,
-              color: success ? Colors.green : Colors.red,
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: [
+          Icon(Icons.error, color: cs.onErrorContainer, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: cs.onErrorContainer, fontSize: 12),
             ),
-            const SizedBox(height: 12),
-            Text(
-              success ? 'Success' : 'Something went wrong',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              children: [
-                ElevatedButton(
-                  onPressed: onFinish,
-                  child: const Text('Finish'),
-                ),
-                if (!success && onRetry != null)
-                  OutlinedButton(
-                    onPressed: onRetry,
-                    child: const Text('Retry'),
-                  ),
-                if (success && onAddAnother != null)
-                  OutlinedButton(
-                    onPressed: onAddAnother,
-                    child: const Text('Add another'),
-                  ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          TextButton(onPressed: onDismiss, child: const Text('DISMISS')),
+        ],
       ),
     );
   }

@@ -1,203 +1,194 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:smart_plug/data/models/device.dart';
-import '../../../core/widgets/loading_widget.dart';
-import '../../../core/utils/formatters.dart';
-import '../application/device_detail_controller.dart';
-import '../widgets/device_controls.dart';
-import '../widgets/device_status_card.dart';
-import '../widgets/power_chart.dart';
-import 'device_info_card.dart';
+import 'package:smart_plug/features/onboarding/domain/plug_types.dart';
+import '../../devices/application/user_devices_controller.dart';
+import 'widgets/device_control_card.dart';
 
-class DeviceDetailScreen extends ConsumerWidget {
+class DeviceDetailScreen extends ConsumerStatefulWidget {
   final String deviceId;
-
   const DeviceDetailScreen({super.key, required this.deviceId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final deviceState = ref.watch(deviceDetailControllerProvider(deviceId));
+  ConsumerState<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
+}
 
-    ref.listen<DeviceDetailState>(deviceDetailControllerProvider(deviceId), (
-      previous,
-      next,
-    ) {
-      if (next.error != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.error!)));
-        ref
-            .read(deviceDetailControllerProvider(deviceId).notifier)
-            .clearError();
+class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      final state = ref.read(userDevicesControllerProvider);
+      if (!state.hasValue) {
+        ref.read(userDevicesControllerProvider.notifier).refresh();
       }
     });
+  }
 
-    if (deviceState.isLoading && deviceState.device == null) {
-      return const Scaffold(body: LoadingWidget());
-    }
+  @override
+  Widget build(BuildContext context) {
+    final devicesAsync = ref.watch(userDevicesControllerProvider);
 
-    if (deviceState.device == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Device Not Found')),
-        body: const Center(
-          child: Text('Device not found or you don\'t have access to it.'),
-        ),
-      );
-    }
-
-    final device = deviceState.device!;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(device.name),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref
-                .read(deviceDetailControllerProvider(deviceId).notifier)
-                .loadDevice(),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'edit':
-                  _showEditDialog(context, ref, device);
-                  break;
-                case 'schedules':
-                  context.go('/device/$deviceId/schedules');
-                  break;
-                case 'history':
-                  context.go('/device/$deviceId/history');
-                  break;
-                case 'settings':
-                  context.go('/device/$deviceId/settings');
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'edit', child: Text('Edit Device')),
-              const PopupMenuItem(value: 'schedules', child: Text('Schedules')),
-              const PopupMenuItem(
-                value: 'history',
-                child: Text('Usage History'),
-              ),
-              const PopupMenuItem(
-                value: 'settings',
-                child: Text('Device Settings'),
+    return devicesAsync.when(
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Scaffold(
+        appBar: AppBar(title: const Text('Device')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Failed to load devices:\n$e', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () =>
+                    ref.read(userDevicesControllerProvider.notifier).refresh(),
+                child: const Text('Retry'),
               ),
             ],
           ),
-        ],
+        ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () => ref
-            .read(deviceDetailControllerProvider(deviceId).notifier)
-            .loadDevice(),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Device Status Card
-              DeviceStatusCard(device: device),
-              const SizedBox(height: 16),
-
-              // Device Controls
-              DeviceControls(
-                device: device,
-                isToggling: deviceState.isToggling,
-                onToggle: () => ref
-                    .read(deviceDetailControllerProvider(deviceId).notifier)
-                    .toggleDevice(),
+      data: (list) {
+        final device = list
+            .where((d) => d.deviceId == widget.deviceId)
+            .cast<UserDeviceView?>()
+            .firstOrNull;
+        if (device == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Device')),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.power_off, size: 48),
+                  const SizedBox(height: 8),
+                  const Text('Device not found or not linked to your account'),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => ref
+                        .read(userDevicesControllerProvider.notifier)
+                        .refresh(),
+                    child: const Text('Refresh'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+            ),
+          );
+        }
 
-              // Real-time Power Chart
-              if (device.isOnline) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Real-time Monitoring',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 300, // Increased height for stats + chart
-                          child: PowerChart(
-                            sensorData: deviceState.realtimeData,
-                          ), // Changed parameter
-                        ),
-                      ],
-                    ),
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              device.deviceName.isNotEmpty
+                  ? device.deviceName
+                  : device.deviceId,
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Refresh',
+                icon: const Icon(Icons.refresh),
+                onPressed: () =>
+                    ref.read(userDevicesControllerProvider.notifier).refresh(),
+              ),
+            ],
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Device ID',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        device.deviceId,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Display name',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        device.deviceName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Room',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        device.roomName ?? '-',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Plug type',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        device.plugType ?? '-',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Linked at',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        device.createdAt.toIso8601String(),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-              ],
+              ),
+              const SizedBox(height: 16),
 
-              // Device Information
-              DeviceInfoCard(device: device),
+              // NEW: Controls (uses your /device/command API)
+              DeviceControlCard(deviceId: device.deviceId),
+
+              const SizedBox(height: 16),
+
+              // Placeholder for monitoring (to be implemented once telemetry APIs are ready)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Monitoring',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Live status and power charts will appear here once telemetry API is provided.',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
+}
 
-  void _showEditDialog(BuildContext context, WidgetRef ref, Device device) {
-    final nameController = TextEditingController(text: device.name);
-    final roomController = TextEditingController(text: device.room ?? '');
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Device'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Device Name',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: roomController,
-              decoration: const InputDecoration(
-                labelText: 'Room (Optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              ref
-                  .read(deviceDetailControllerProvider(deviceId).notifier)
-                  .updateDevice(
-                    name: nameController.text.trim(),
-                    room: roomController.text.trim().isEmpty
-                        ? null
-                        : roomController.text.trim(),
-                  );
-              Navigator.of(context).pop();
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
+extension<E> on Iterable<E> {
+  E? get firstOrNull => isEmpty ? null : first;
 }

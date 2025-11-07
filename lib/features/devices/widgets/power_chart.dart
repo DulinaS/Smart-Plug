@@ -4,7 +4,7 @@ import '../../../../data/models/sensor_reading.dart';
 import '../../../../core/utils/formatters.dart';
 
 class PowerChart extends StatelessWidget {
-  final List<SensorReading> sensorData; // Changed from telemetryData
+  final List<SensorReading> sensorData;
 
   const PowerChart({super.key, required this.sensorData});
 
@@ -23,9 +23,11 @@ class PowerChart extends StatelessWidget {
       );
     }
 
-    // Prepare chart data from sensor readings
-    final spots = sensorData.asMap().entries.map((entry) {
-      return FlSpot(entry.key.toDouble(), entry.value.power);
+    final latest = sensorData.last;
+    final isOn = _isOnFromBackend(latest);
+
+    final spots = sensorData.asMap().entries.map((e) {
+      return FlSpot(e.key.toDouble(), e.value.power);
     }).toList();
 
     final maxPower = sensorData
@@ -38,30 +40,50 @@ class PowerChart extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Real-time stats
+        Row(
+          children: [
+            _StatusDot(isOn: isOn),
+            const SizedBox(width: 8),
+            Text(
+              isOn ? 'ON' : 'OFF',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isOn ? Colors.green[700] : Colors.red[700],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Last update: ${Formatters.time(DateTime.parse(latest.timestamp))}',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildStatCard(
+            _stat(
               'Current',
-              '${sensorData.last.current.toStringAsFixed(2)} A',
+              '${latest.current.toStringAsFixed(2)} A',
               Colors.blue,
             ),
-            _buildStatCard(
+            _stat(
               'Voltage',
-              '${sensorData.last.voltage.toStringAsFixed(1)} V',
+              '${latest.voltage.toStringAsFixed(1)} V',
               Colors.green,
             ),
-            _buildStatCard(
+            _stat(
               'Power',
-              '${sensorData.last.power.toStringAsFixed(0)} W',
+              '${latest.power.toStringAsFixed(0)} W',
               Colors.orange,
             ),
           ],
         ),
         const SizedBox(height: 16),
 
-        // Power chart
         SizedBox(
           height: 200,
           child: LineChart(
@@ -70,24 +92,18 @@ class PowerChart extends StatelessWidget {
                 show: true,
                 drawVerticalLine: false,
                 horizontalInterval: maxPower > 100 ? 50 : 10,
-                getDrawingHorizontalLine: (value) {
-                  return FlLine(
-                    color: Colors.grey.withOpacity(0.3),
-                    strokeWidth: 1,
-                  );
-                },
+                getDrawingHorizontalLine: (value) =>
+                    FlLine(color: Colors.grey.withOpacity(0.3), strokeWidth: 1),
               ),
               titlesData: FlTitlesData(
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 50,
-                    getTitlesWidget: (value, meta) {
-                      return Text(
-                        '${value.toInt()}W',
-                        style: const TextStyle(fontSize: 10),
-                      );
-                    },
+                    getTitlesWidget: (value, _) => Text(
+                      '${value.toInt()}W',
+                      style: const TextStyle(fontSize: 10),
+                    ),
                   ),
                 ),
                 bottomTitles: AxisTitles(
@@ -95,14 +111,12 @@ class PowerChart extends StatelessWidget {
                     showTitles: true,
                     reservedSize: 30,
                     interval: (sensorData.length / 5).ceil().toDouble(),
-                    getTitlesWidget: (value, meta) {
-                      final index = value.toInt();
-                      if (index >= 0 && index < sensorData.length) {
-                        final time = DateTime.parse(
-                          sensorData[index].timestamp,
-                        );
+                    getTitlesWidget: (value, _) {
+                      final i = value.toInt();
+                      if (i >= 0 && i < sensorData.length) {
+                        final t = DateTime.parse(sensorData[i].timestamp);
                         return Text(
-                          Formatters.time(time),
+                          Formatters.time(t),
                           style: const TextStyle(fontSize: 10),
                         );
                       }
@@ -123,20 +137,16 @@ class PowerChart extends StatelessWidget {
               ),
               minX: 0,
               maxX: (sensorData.length - 1).toDouble(),
-              minY: minPower > 0 ? 0 : minPower - 10,
+              minY: minPower > 0 ? 0 : (minPower - 10),
               maxY: maxPower + 10,
               lineBarsData: [
                 LineChartBarData(
                   spots: spots,
-                  isCurved: true,
+                  isCurved: false, // ensure no overshoot at OFF transitions
                   color: Colors.blue,
                   barWidth: 2,
                   isStrokeCapRound: true,
-                  dotData: FlDotData(
-                    show:
-                        sensorData.length <
-                        10, // Show dots only for small datasets
-                  ),
+                  dotData: FlDotData(show: sensorData.length < 10),
                   belowBarData: BarAreaData(
                     show: true,
                     color: Colors.blue.withOpacity(0.1),
@@ -145,21 +155,19 @@ class PowerChart extends StatelessWidget {
               ],
               lineTouchData: LineTouchData(
                 touchTooltipData: LineTouchTooltipData(
-                  getTooltipItems: (touchedSpots) {
-                    return touchedSpots.map((spot) {
-                      final index = spot.x.toInt();
-                      if (index >= 0 && index < sensorData.length) {
-                        final reading = sensorData[index];
-                        return LineTooltipItem(
-                          '${reading.power.toStringAsFixed(1)}W\n'
-                          '${reading.current.toStringAsFixed(2)}A\n'
-                          '${Formatters.time(DateTime.parse(reading.timestamp))}',
-                          const TextStyle(color: Colors.white, fontSize: 12),
-                        );
-                      }
-                      return null;
-                    }).toList();
-                  },
+                  getTooltipItems: (touched) => touched.map((s) {
+                    final i = s.x.toInt();
+                    if (i >= 0 && i < sensorData.length) {
+                      final r = sensorData[i];
+                      return LineTooltipItem(
+                        '${r.power.toStringAsFixed(1)}W\n'
+                        '${r.current.toStringAsFixed(2)}A\n'
+                        '${Formatters.time(DateTime.parse(r.timestamp))}',
+                        const TextStyle(color: Colors.white, fontSize: 12),
+                      );
+                    }
+                    return null;
+                  }).toList(),
                 ),
                 handleBuiltInTouches: true,
               ),
@@ -170,7 +178,15 @@ class PowerChart extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(String label, String value, Color color) {
+  bool _isOnFromBackend(SensorReading r) {
+    final s = r.state?.toUpperCase();
+    if (s == 'ON') return true;
+    if (s == 'OFF') return false;
+    // Fallback only if backend state missing
+    return r.power > 1.0 || r.current > 0.05;
+  }
+
+  Widget _stat(String label, String value, Color color) {
     return Column(
       children: [
         Text(
@@ -184,6 +200,30 @@ class PowerChart extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       ],
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  final bool isOn;
+  const _StatusDot({required this.isOn});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: isOn ? Colors.green : Colors.red,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: (isOn ? Colors.green : Colors.red).withOpacity(0.5),
+            blurRadius: 6,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
     );
   }
 }

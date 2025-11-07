@@ -1,4 +1,4 @@
-import 'dart:async';
+/* import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smart_plug/data/models/sensor_reading.dart';
 import '../../../data/models/device.dart';
@@ -47,7 +47,7 @@ class DashboardController extends StateNotifier<DashboardState> {
   @override
   void dispose() {
     _realtimeSubscription?.cancel();
-    _realtimeRepository.stopRealtimeUpdates();
+    _realtimeRepository.stopRealtimeUpdates('dashboard');
     super.dispose();
   }
 
@@ -128,3 +128,4 @@ final dashboardControllerProvider =
       final realtimeRepository = ref.read(realtimeRepositoryProvider);
       return DashboardController(deviceRepository, realtimeRepository);
     });
+ */

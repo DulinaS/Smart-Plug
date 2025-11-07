@@ -9,12 +9,14 @@ class SensorReading {
   final double current;
   final double power;
   final String timestamp;
+  final String? state; // NEW: backend state "ON"/"OFF"
 
   const SensorReading({
     required this.voltage,
     required this.current,
     required this.power,
     required this.timestamp,
+    this.state,
   });
 
   factory SensorReading.fromJson(Map<String, dynamic> json) =>
@@ -58,6 +60,7 @@ class SensorReading {
         current: 0.0,
         power: 0.0,
         timestamp: DateTime.now().toIso8601String(),
+        state: null,
       );
     }
   }
