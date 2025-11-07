@@ -6,6 +6,10 @@ import '../../../data/models/daily_summary.dart';
 import '../../devices/application/user_devices_controller.dart';
 import '../application/day_summary_controller.dart';
 
+// PERIOD TAB SUPPORT
+import '../application/period_summary_controller.dart';
+import '../../../data/models/range_summary.dart';
+
 class SummaryHubScreen extends ConsumerStatefulWidget {
   const SummaryHubScreen({super.key});
 
@@ -53,12 +57,14 @@ class _SummaryHubScreenState extends ConsumerState<SummaryHubScreen>
         controller: _tabs,
         children: [
           _DaySummaryTab(defaultDate: yesterday),
-          const _PeriodSummaryPlaceholder(),
+          const _RangeSummaryTab(), // IMPLEMENTED / MODIFIED
         ],
       ),
     );
   }
 }
+
+/* --------------------------- Specific Day TAB (DO NOT CHANGE) --------------------------- */
 
 class _DaySummaryTab extends ConsumerStatefulWidget {
   final DateTime defaultDate;
@@ -595,18 +601,794 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _PeriodSummaryPlaceholder extends StatelessWidget {
-  const _PeriodSummaryPlaceholder();
+/* --------------------------- TIME PERIOD TAB (MODIFIED) --------------------------- */
+
+class _RangeSummaryTab extends ConsumerStatefulWidget {
+  const _RangeSummaryTab();
+
+  @override
+  ConsumerState<_RangeSummaryTab> createState() => _RangeSummaryTabState();
+}
+
+class _RangeSummaryTabState extends ConsumerState<_RangeSummaryTab> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      final devices = ref.read(userDevicesControllerProvider);
+      if (!devices.hasValue) {
+        ref.read(userDevicesControllerProvider.notifier).refresh();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        'Time period summary will be available soon.\n'
-        'You will be able to compare multiple days/week/month.',
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.bodyMedium,
+    final devicesAsync = ref.watch(userDevicesControllerProvider);
+    final state = ref.watch(periodSummaryControllerProvider);
+    final ctrl = ref.read(periodSummaryControllerProvider.notifier);
+
+    final todayUtc = DateTime.now().toUtc();
+    final maxSelectable = DateTime.utc(
+      todayUtc.year,
+      todayUtc.month,
+      todayUtc.day,
+    ).subtract(const Duration(days: 1));
+    final firstSelectable = DateTime(2024, 1, 1);
+
+    // Derived stats
+    final availableDays = state.days.where((d) => d.hasData).toList();
+    final totalKwh = availableDays.fold<double>(
+      0.0,
+      (a, b) => a + b.totalPower,
+    );
+    final avgPower = availableDays.isNotEmpty
+        ? availableDays.fold<double>(0.0, (a, b) => a + b.avgPower) /
+              availableDays.length
+        : 0.0;
+    final avgVoltage = availableDays.isNotEmpty
+        ? availableDays.fold<double>(0.0, (a, b) => a + b.avgVoltage) /
+              availableDays.length
+        : 0.0;
+    final avgCurrent = availableDays.isNotEmpty
+        ? availableDays.fold<double>(0.0, (a, b) => a + b.avgCurrent) /
+              availableDays.length
+        : 0.0;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      children: [
+        if (state.error != null) ...[
+          _Banner(
+            color: Colors.red,
+            icon: Icons.error_outline,
+            message: state.error!,
+            onClose: ctrl.clearError,
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        Text('Select device', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 6),
+        devicesAsync.when(
+          loading: () => const LinearProgressIndicator(minHeight: 2),
+          error: (e, _) => Text('Failed to load devices: $e'),
+          data: (list) {
+            return DropdownButtonFormField<String>(
+              value:
+                  state.deviceId ??
+                  (list.isNotEmpty ? list.first.deviceId : null),
+              items: list
+                  .map(
+                    (d) => DropdownMenuItem(
+                      value: d.deviceId,
+                      child: Text(
+                        d.deviceName.isNotEmpty ? d.deviceName : d.deviceId,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => v != null ? ctrl.setDevice(v) : null,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+
+        Text(
+          'Select range (2–14 days, ending before today)',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_month_outlined),
+                label: Text(
+                  state.startDate == null
+                      ? 'Start date'
+                      : _fmt(state.startDate!),
+                ),
+                onPressed: () async {
+                  final initial =
+                      state.startDate ??
+                      maxSelectable.subtract(const Duration(days: 6));
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: initial.isAfter(maxSelectable)
+                        ? maxSelectable
+                        : initial,
+                    firstDate: firstSelectable,
+                    lastDate: maxSelectable,
+                  );
+                  if (picked != null) {
+                    ctrl.setStart(
+                      DateTime.utc(picked.year, picked.month, picked.day),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.event_available_outlined),
+                label: Text(
+                  state.endDate == null ? 'End date' : _fmt(state.endDate!),
+                ),
+                onPressed: () async {
+                  final initial = state.endDate ?? maxSelectable;
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: initial.isAfter(maxSelectable)
+                        ? maxSelectable
+                        : initial,
+                    firstDate: firstSelectable,
+                    lastDate: maxSelectable,
+                  );
+                  if (picked != null) {
+                    ctrl.setEnd(
+                      DateTime.utc(picked.year, picked.month, picked.day),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: state.loading ? null : () => ctrl.load(),
+              child: state.loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Load'),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        if (state.days.isEmpty && state.loading == false && state.error == null)
+          Text(
+            'Pick a device and a valid date range (2–14 days, before today) to see analytics.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+
+        if (state.days.isNotEmpty) ...[
+          // Summary cards
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  label: 'Total Energy',
+                  value: '${Formatters.energy(totalKwh)} kWh',
+                  icon: Icons.bolt,
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatCard(
+                  label: 'Avg Power',
+                  value: '${avgPower.toStringAsFixed(1)} W',
+                  icon: Icons.flash_on,
+                  color: Colors.blue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  label: 'Avg Voltage',
+                  value: '${avgVoltage.toStringAsFixed(1)} V',
+                  icon: Icons.electric_bolt,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatCard(
+                  label: 'Avg Current',
+                  value: '${avgCurrent.toStringAsFixed(2)} A',
+                  icon: Icons.speed,
+                  color: Colors.purple,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  label: 'Days with data',
+                  value: '${availableDays.length}',
+                  icon: Icons.check_circle,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatCard(
+                  label: 'Missing days',
+                  value: '${state.missingDays}',
+                  icon: Icons.info_outline,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // PIE: energy share per day (exclude zero, show missing slice if any)
+          _EnergyDistributionPie(days: state.days),
+
+          const SizedBox(height: 20),
+
+          // Bar: total power per day (kWh), grey for missing
+          _TotalEnergyBar(days: state.days),
+
+          const SizedBox(height: 20),
+
+          // Trend line: avgPower (W) with improved styling & tooltips
+          _AvgPowerTrend(days: state.days),
+        ],
+      ],
+    );
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+/* ------------------------ PERIOD TAB SUBCOMPONENTS ------------------------ */
+
+class _EnergyDistributionPie extends StatelessWidget {
+  final List<RangeDay> days;
+  const _EnergyDistributionPie({required this.days});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = days.fold<double>(0, (a, b) => a + b.totalPower);
+    final missingCount = days.where((d) => !d.hasData).length;
+
+    // Build sections: Each day with >0 energy gets slice; if all zero or missing, show placeholder
+    final slices = <PieChartSectionData>[];
+    for (final d in days) {
+      if (d.totalPower > 0) {
+        final pct = total > 0 ? (d.totalPower / total) * 100 : 0;
+        slices.add(
+          PieChartSectionData(
+            color: _colorForIndex(days.indexOf(d)),
+            value: d.totalPower,
+            title: '${d.date.month}/${d.date.day}\n${pct.toStringAsFixed(0)}%',
+            radius: 56,
+            titleStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
+    }
+
+    if (slices.isEmpty) {
+      // Single neutral slice to show "No energy data"
+      slices.add(
+        PieChartSectionData(
+          color: Colors.grey,
+          value: 1,
+          title: 'No data',
+          radius: 56,
+          titleStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    } else if (missingCount > 0) {
+      // Add one slice for missing days (visual context)
+      final missingValue = total == 0 ? 1.0 : total * 0.05; // small slice
+      slices.add(
+        PieChartSectionData(
+          color: Colors.grey.shade400,
+          value: missingValue,
+          title: 'Missing-$missingCount',
+          radius: 56,
+          titleStyle: const TextStyle(
+            color: Colors.black87,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Energy distribution (kWh)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 250,
+              child: PieChart(
+                PieChartData(
+                  sections: slices,
+                  centerSpaceRadius: 48,
+                  sectionsSpace: 2,
+                  borderData: FlBorderData(show: false),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 6,
+              children: [
+                for (final s in slices)
+                  if (s.title != 'No data')
+                    _LegendChip(
+                      color: s.color ?? Colors.grey,
+                      label: s.title!.split('\n').first,
+                    ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Color _colorForIndex(int i) {
+    const palette = [
+      Colors.deepPurple,
+      Colors.blue,
+      Colors.indigo,
+      Colors.teal,
+      Colors.orange,
+      Colors.pink,
+      Colors.green,
+      Colors.cyan,
+      Colors.red,
+      Colors.lime,
+      Colors.amber,
+      Colors.brown,
+      Colors.purple,
+      Colors.lightBlue,
+    ];
+    return palette[i % palette.length];
+  }
+}
+
+class _TotalEnergyBar extends StatelessWidget {
+  final List<RangeDay> days;
+  const _TotalEnergyBar({required this.days});
+
+  double _computeMaxY() {
+    final maxVal = days.fold<double>(
+      0,
+      (a, b) => a > b.totalPower ? a : b.totalPower,
+    );
+    return (maxVal == 0 ? 1 : maxVal) * 1.15; // pad
+  }
+
+  double _tickInterval() {
+    final maxVal = days.fold<double>(
+      0,
+      (a, b) => a > b.totalPower ? a : b.totalPower,
+    );
+    if (maxVal <= 1) return 0.2;
+    if (maxVal <= 5) return 1;
+    if (maxVal <= 10) return 2;
+    if (maxVal <= 25) return 5;
+    return (maxVal / 6).ceilToDouble(); // fallback
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxY = _computeMaxY();
+    final interval = _tickInterval();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Total energy per day (kWh)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 260,
+              child: BarChart(
+                BarChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawHorizontalLine: true,
+                    horizontalInterval: interval,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Colors.grey.withOpacity(0.25),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 46,
+                        interval: interval,
+                        getTitlesWidget: (value, _) {
+                          // Avoid label overlap by only showing nice ticks
+                          if ((value / interval).round() == value / interval) {
+                            final txt = value >= 10
+                                ? value.toStringAsFixed(0)
+                                : value.toStringAsFixed(1);
+                            return Text(
+                              txt,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey,
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 42,
+                        getTitlesWidget: (value, _) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < days.length) {
+                            final d = days[i].date;
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                '${d.month}/${d.day}',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  barGroups: List.generate(days.length, (i) {
+                    final day = days[i];
+                    return BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: day.totalPower,
+                          color: day.hasData
+                              ? Colors.deepPurple
+                              : Colors.grey.shade400,
+                          width: 14,
+                          borderRadius: BorderRadius.circular(4),
+                          rodStackItems: [],
+                        ),
+                      ],
+                      showingTooltipIndicators: [0],
+                    );
+                  }),
+                  maxY: maxY,
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      tooltipPadding: const EdgeInsets.all(5),
+                      getTooltipItem: (group, _, rod, __) {
+                        final day = days[group.x.toInt()];
+                        return BarTooltipItem(
+                          '${day.date.month}/${day.date.day}\n'
+                          '${day.totalPower.toStringAsFixed(2)} kWh',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontSize: 7,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Grey bars indicate days with no data. Axis interval dynamically chosen to prevent label overlap.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AvgPowerTrend extends StatelessWidget {
+  final List<RangeDay> days;
+  const _AvgPowerTrend({required this.days});
+
+  double _computeMaxY() {
+    final maxVal = days.fold<double>(
+      0,
+      (a, b) => a > b.avgPower ? a : b.avgPower,
+    );
+    return (maxVal == 0 ? 1 : maxVal) * 1.15;
+  }
+
+  double _interval() {
+    final maxVal = days.fold<double>(
+      0,
+      (a, b) => a > b.avgPower ? a : b.avgPower,
+    );
+    if (maxVal <= 50) return 10;
+    if (maxVal <= 120) return 20;
+    if (maxVal <= 300) return 50;
+    return (maxVal / 6).ceilToDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxY = _computeMaxY();
+    final interval = _interval();
+
+    // Build segments to create visible gaps (each list of contiguous data)
+    final segments = <List<FlSpot>>[];
+    List<FlSpot> current = [];
+    for (var i = 0; i < days.length; i++) {
+      final d = days[i];
+      if (d.hasData) {
+        current.add(FlSpot(i.toDouble(), d.avgPower));
+      } else {
+        if (current.isNotEmpty) {
+          segments.add(current);
+          current = [];
+        }
+      }
+    }
+    if (current.isNotEmpty) segments.add(current);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Average power trend (W)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 260,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    horizontalInterval: interval,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: Colors.grey.withOpacity(0.25),
+                      strokeWidth: 1,
+                    ),
+                    getDrawingVerticalLine: (value) => FlLine(
+                      color: Colors.grey.withOpacity(0.08),
+                      strokeWidth: 1,
+                      dashArray: [4, 3],
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  minY: 0,
+                  maxY: maxY,
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 50,
+                        interval: interval,
+                        getTitlesWidget: (value, _) {
+                          if ((value / interval).round() != value / interval) {
+                            return const SizedBox.shrink();
+                          }
+                          final txt = value >= 100
+                              ? value.toStringAsFixed(0)
+                              : value.toStringAsFixed(0);
+                          return Text(
+                            txt,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 42,
+                        getTitlesWidget: (value, _) {
+                          final i = value.toInt();
+                          if (i >= 0 && i < days.length) {
+                            final d = days[i].date;
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                '${d.month}/${d.day}',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  lineBarsData: segments
+                      .map(
+                        (segment) => LineChartBarData(
+                          spots: segment,
+                          isCurved: true,
+                          curveSmoothness: 0.25,
+                          color: Colors.blue,
+                          barWidth: 3,
+                          dotData: FlDotData(show: segment.length <= 16),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: Colors.blue.withOpacity(0.10),
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.blue.withOpacity(0.20),
+                                Colors.blue.withOpacity(0.02),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  lineTouchData: LineTouchData(
+                    handleBuiltInTouches: true,
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipItems: (touched) {
+                        return touched
+                            .map((barSpot) {
+                              final i = barSpot.x.toInt();
+                              if (i >= 0 && i < days.length) {
+                                final day = days[i];
+                                return LineTooltipItem(
+                                  '${day.date.month}/${day.date.day}\n'
+                                  '${day.avgPower.toStringAsFixed(1)} W',
+                                  const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                );
+                              }
+                              return null;
+                            })
+                            .whereType<LineTooltipItem>()
+                            .toList();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Gaps indicate missing days. Smoothed curve with gradient area improves trend readability.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/* ---------------------------- SMALL UTIL WIDGETS ---------------------------- */
+
+class _LegendChip extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendChip({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color.darken(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* --------------------------- COLOR EXTENSION --------------------------- */
+extension _ColorExt on Color {
+  Color darken([double amount = .2]) {
+    final hsl = HSLColor.fromColor(this);
+    final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+    return hslDark.toColor();
   }
 }

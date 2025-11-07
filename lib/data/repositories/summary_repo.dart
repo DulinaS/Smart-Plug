@@ -49,6 +49,32 @@ class SummaryRepository {
       rethrow;
     }
   }
+
+  Future<List<Map<String, dynamic>>> getRangeRaw({
+    required String deviceId,
+    required String startDate, // YYYY-MM-DD
+    required String endDate, // YYYY-MM-DD
+  }) async {
+    final res = await _http.dio.post(
+      AppConfig.periodSummaryEndpoint,
+      data: {'deviceId': deviceId, 'startDate': startDate, 'endDate': endDate},
+    );
+
+    dynamic body = res.data;
+    if (body is String) body = json.decode(body);
+    if (body is Map && body['body'] != null) {
+      body = body['body'];
+      if (body is String) body = json.decode(body);
+    }
+
+    if (body is Map && body['records'] is List) {
+      return (body['records'] as List)
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    }
+
+    return <Map<String, dynamic>>[];
+  }
 }
 
 final summaryRepositoryProvider = Provider<SummaryRepository>((ref) {

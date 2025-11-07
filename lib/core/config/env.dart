@@ -22,6 +22,9 @@ class AppConfig {
   static const String latestReadingEndpoint = '$dataBaseUrl/latest';
   static const String controlEndpoint = '$controlBaseUrl/command';
 
-  // NEW: Daily summary endpoint (POST { deviceId, date: YYYY-MM-DD })
+  // Daily summary endpoint
   static const String daySummaryEndpoint = '$dataBaseUrl/day';
+
+  // NEW: Period (date range) summary
+  static const String periodSummaryEndpoint = '$dataBaseUrl/getDataByDateRange';
 }
