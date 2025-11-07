@@ -5,6 +5,7 @@ import '../../../core/utils/validators.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/loading_widget.dart';
 import '../application/auth_controller.dart';
+import '../../../data/models/user.dart'; // for BillingType
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -21,6 +22,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _usernameController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+
+  // NEW: selected billing type
+  BillingType _billingType = BillingType.general;
 
   @override
   void dispose() {
@@ -43,7 +47,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ref.read(authControllerProvider.notifier).clearError();
       }
 
-      // Navigate to confirm-signup when verification is required
       final justFinishedSignup =
           previous?.isLoading == true && next.isLoading == false;
       if (justFinishedSignup &&
@@ -155,14 +158,44 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       border: const OutlineInputBorder(),
                     ),
                     validator: (value) {
-                      if (value != _passwordController.text)
+                      if (value != _passwordController.text) {
                         return 'Passwords do not match';
+                      }
                       return null;
                     },
                   ),
                   const SizedBox(height: 24),
 
-                  // Submit
+                  // NEW: Billing type selector (segmented buttons)
+                  Text(
+                    'Billing type',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<BillingType>(
+                    segments: const [
+                      ButtonSegment(
+                        value: BillingType.general,
+                        label: Text('General'),
+                        icon: Icon(Icons.person_outline),
+                      ),
+                      ButtonSegment(
+                        value: BillingType.enterprise,
+                        label: Text('Enterprise'),
+                        icon: Icon(Icons.apartment_outlined),
+                      ),
+                    ],
+                    selected: {_billingType},
+                    onSelectionChanged: (selection) {
+                      if (selection.isNotEmpty) {
+                        setState(() => _billingType = selection.first);
+                      }
+                    },
+                    showSelectedIcon: false,
+                    style: ButtonStyle(visualDensity: VisualDensity.compact),
+                  ),
+                  const SizedBox(height: 24),
+
                   authState.isLoading
                       ? const LoadingWidget()
                       : CustomButton(
@@ -171,7 +204,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ),
                   const SizedBox(height: 16),
 
-                  // Login link
                   TextButton(
                     onPressed: () => context.go('/login'),
                     child: const Text('Already have an account? Sign in'),
@@ -193,6 +225,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             _emailController.text.trim(),
             _passwordController.text,
             _usernameController.text.trim(),
+            billingType: _billingType, // NEW
           );
     }
   }

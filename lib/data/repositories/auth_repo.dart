@@ -14,12 +14,19 @@ class AuthRepository {
   Future<Map<String, dynamic>> signUp(
     String email,
     String password,
-    String fullName,
-  ) async {
+    String fullName, {
+    // NEW: make billingType selectable, default General for flows like resend
+    BillingType billingType = BillingType.general,
+  }) async {
     try {
       final response = await _httpClient.dio.post(
         '${AppConfig.authBaseUrl}/signup',
-        data: {'email': email, 'password': password, 'fullName': fullName},
+        data: {
+          'email': email,
+          'password': password,
+          'fullName': fullName,
+          'billingType': billingType.toApiString(), // NEW
+        },
       );
       return response.data;
     } on DioException catch (e) {
@@ -65,9 +72,14 @@ class AuthRepository {
       final displayNameFromResponse =
           (data['name'] ?? nestedUser?['displayName']) as String?;
 
+      // NEW: pull billingType from API if present, else default to General
+      final rawBilling = (data['billingType'] ?? nestedUser?['billingType'])
+          ?.toString();
+      final billing = BillingTypeX.fromString(rawBilling);
       // Persist for cold start restore
       await _secureStore.saveUsername(usernameFromResponse);
       await _secureStore.saveDisplayName(displayNameFromResponse);
+      await _secureStore.saveUserBillingType(billing.toApiString());
 
       return User(
         id: userId,
@@ -75,6 +87,7 @@ class AuthRepository {
         username: usernameFromResponse,
         displayName: displayNameFromResponse,
         createdAt: DateTime.now(),
+        billingType: billing, // NEW
       );
     } on DioException catch (e) {
       throw _handleError(e);
@@ -97,7 +110,7 @@ class AuthRepository {
     await _secureStore.clearAll();
   }
 
-  // FIX: restore full profile on app start using persisted values
+  // Restore profile on app start using persisted values
   Future<User?> getCurrentUser() async {
     try {
       final token = await _secureStore.getAuthToken();
@@ -108,6 +121,8 @@ class AuthRepository {
       final username =
           (await _secureStore.getUsername()) ?? email.split('@').first;
       final displayName = await _secureStore.getDisplayName();
+      final btRaw = (await _secureStore.getUserBillingType()) ?? 'General';
+      final billing = BillingTypeX.fromString(btRaw);
 
       return User(
         id: userId,
@@ -115,6 +130,7 @@ class AuthRepository {
         username: username,
         displayName: displayName,
         createdAt: DateTime.now(),
+        billingType: billing, // NEW
       );
     } catch (_) {
       return null;
@@ -124,8 +140,9 @@ class AuthRepository {
   String _handleError(DioException e) {
     if (e.response?.statusCode == 401) return 'Invalid credentials';
     if (e.response?.statusCode == 409) return 'User already exists';
-    if (e.response?.data?['message'] != null)
+    if (e.response?.data?['message'] != null) {
       return e.response!.data['message'];
+    }
     return 'Authentication failed';
   }
 }

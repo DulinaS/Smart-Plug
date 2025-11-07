@@ -9,9 +9,12 @@ class SecureStore {
   static const _userIdKey = 'user_id';
   static const _userEmailKey = 'user_email';
 
-  // NEW: persist username + displayName so we can restore real profile on app start
+  // Persist username + displayName so we can restore profile on app start
   static const _usernameKey = 'user_username';
   static const _displayNameKey = 'user_display_name';
+
+  // NEW: persist billing type ("General"/"Enterprise")
+  static const _billingTypeKey = 'user_billing_type';
 
   Future<void> saveAuthToken(String token) async {
     await _storage.write(key: _authTokenKey, value: token);
@@ -45,7 +48,6 @@ class SecureStore {
     return await _storage.read(key: _userEmailKey);
   }
 
-  // NEW
   Future<void> saveUsername(String username) async {
     await _storage.write(key: _usernameKey, value: username);
   }
@@ -54,7 +56,6 @@ class SecureStore {
     return await _storage.read(key: _usernameKey);
   }
 
-  // NEW
   Future<void> saveDisplayName(String? displayName) async {
     if (displayName == null || displayName.isEmpty) {
       await _storage.delete(key: _displayNameKey);
@@ -65,6 +66,15 @@ class SecureStore {
 
   Future<String?> getDisplayName() async {
     return await _storage.read(key: _displayNameKey);
+  }
+
+  // NEW: billing type helpers (store raw string sent by backend: "General"/"Enterprise")
+  Future<void> saveUserBillingType(String billingType) async {
+    await _storage.write(key: _billingTypeKey, value: billingType);
+  }
+
+  Future<String?> getUserBillingType() async {
+    return await _storage.read(key: _billingTypeKey);
   }
 
   Future<void> clearAll() async {

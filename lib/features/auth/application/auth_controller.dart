@@ -72,7 +72,7 @@ class AuthController extends StateNotifier<AuthState> {
         pendingEmail: null,
       );
     } catch (e) {
-      String errorMessage = e.toString();
+      final errorMessage = e.toString();
       if (errorMessage.contains('UserNotConfirmedException') ||
           errorMessage.contains('not verified')) {
         state = state.copyWith(
@@ -87,12 +87,22 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> register(String email, String password, String fullName) async {
+  // UPDATED: include billingType
+  Future<void> register(
+    String email,
+    String password,
+    String fullName, {
+    BillingType billingType = BillingType.general,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _authRepository.signUp(email, password, fullName);
+      final response = await _authRepository.signUp(
+        email,
+        password,
+        fullName,
+        billingType: billingType,
+      );
 
-      // Check if email verification is required
       if (response['requiresEmailVerification'] == true) {
         state = state.copyWith(
           isLoading: false,
