@@ -69,7 +69,6 @@ class DashboardScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      // Prefer ~160 px per tile; never drop below 2 cols; cap at 4
                       final minTileWidth = 160.0;
                       int cols = (constraints.maxWidth / minTileWidth).floor();
                       cols = cols.clamp(2, 4);
@@ -80,7 +79,6 @@ class DashboardScreen extends ConsumerWidget {
                           crossAxisCount: cols,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
-                          // Shorter tiles for a compact look
                           mainAxisExtent: 120,
                         ),
                         itemCount: quick.length,
@@ -141,6 +139,13 @@ class DashboardScreen extends ConsumerWidget {
                     );
                   }
                 },
+              ),
+              _Tile(
+                icon: Icons.insights_outlined,
+                color: Colors.deepPurple,
+                title: 'Summary',
+                subtitle: 'Daily & period (soon)',
+                onTap: () => context.push('/summary'),
               ),
               _Tile(
                 icon: Icons.settings_outlined,
