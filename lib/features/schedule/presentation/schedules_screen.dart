@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/schedule.dart';
 import '../../../core/utils/formatters.dart';
+import '../../timer/application/timer_controller.dart';
 import '../application/schedule_controller.dart';
+import 'widgets/active_timer_banner.dart';
 import 'widgets/schedule_editor_dialog.dart';
 
 class SchedulesScreen extends ConsumerWidget {
   final String deviceId;
-
   const SchedulesScreen({super.key, required this.deviceId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheduleState = ref.watch(scheduleControllerProvider(deviceId));
+    final timerState = ref.watch(deviceTimerControllerProvider(deviceId));
 
     return Scaffold(
       appBar: AppBar(
@@ -28,18 +30,24 @@ class SchedulesScreen extends ConsumerWidget {
         onRefresh: () => ref
             .read(scheduleControllerProvider(deviceId).notifier)
             .loadSchedules(),
-        child: scheduleState.isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : scheduleState.schedules.isEmpty
-            ? _buildEmptyState(context, ref)
-            : ListView.builder(
-                padding: const EdgeInsets.all(16.0),
-                itemCount: scheduleState.schedules.length,
-                itemBuilder: (context, index) {
-                  final schedule = scheduleState.schedules[index];
-                  return _buildScheduleCard(context, ref, schedule);
-                },
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // NEW: active timer banner
+            ActiveTimerBanner(deviceId: deviceId),
+            if (scheduleState.isLoading)
+              const Padding(
+                padding: EdgeInsets.only(top: 32),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (scheduleState.schedules.isEmpty)
+              _buildEmptyState(context, ref)
+            else
+              ...scheduleState.schedules.map(
+                (s) => _buildScheduleCard(context, ref, s),
               ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showScheduleEditor(context, ref),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../devices/application/user_devices_controller.dart';
 import 'widgets/quick_control_card.dart';
+import 'widgets/auto_off_timer_card.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -88,17 +89,11 @@ class DashboardScreen extends ConsumerWidget {
                       );
                     },
                   ),
-                  if (list.length > 4) ...[
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => context.push('/devices'),
-                        icon: const Icon(Icons.chevron_right),
-                        label: Text('View all ${list.length} devices'),
-                      ),
-                    ),
-                  ],
+                  const SizedBox(height: 16),
+
+                  // NEW: Auto‑OFF timer card
+                  const AutoOffTimerCard(),
+
                   const SizedBox(height: 16),
                 ],
               );

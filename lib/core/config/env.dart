@@ -27,4 +27,7 @@ class AppConfig {
 
   // NEW: Period (date range) summary
   static const String periodSummaryEndpoint = '$dataBaseUrl/getDataByDateRange';
+
+  //Scheduling endpoint
+  static const String scheduleCommandEndpoint = '$controlBaseUrl/schedule';
 }
