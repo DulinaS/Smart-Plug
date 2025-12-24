@@ -83,6 +83,12 @@ class DeviceControlController extends StateNotifier<DeviceControlState> {
 
   void clearError() => state = state.copyWith(error: null);
 
+  /// Sync state from external source (e.g., timer) without sending a command.
+  /// Used when the timer starts and the backend automatically turns the device ON.
+  void syncStateFromTimer(bool on) {
+    state = state.copyWith(isOn: on, busy: false, error: null);
+  }
+
   Future<bool> _waitForAck({
     required bool desiredOn,
     required Duration timeout,
