@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/repositories/control_repo.dart';
+import '../../../data/repositories/realtime_repo.dart';
+import '../../device_detail/application/device_control_controller.dart';
 
 // Represents the live timer state for one device.
 @immutable
@@ -69,6 +71,20 @@ class DeviceTimerController extends StateNotifier<DeviceTimerState> {
         scheduling: false,
         error: null,
       );
+
+      // SYNC: Mark device as ON in the control state and realtime repo
+      // The backend turns the device ON when scheduling auto-off timer
+      _ref
+          .read(deviceControlControllerProvider(state.deviceId).notifier)
+          .syncStateFromTimer(true);
+
+      // Also notify realtime repo that device is commanded ON
+      final rt = _ref.read(realtimeRepositoryProvider);
+      rt.setCommandedOn(state.deviceId);
+      // Force refresh to get latest readings
+      // ignore: discarded_futures
+      rt.forceRefresh(state.deviceId);
+
       _startTicker();
     } catch (e) {
       state = state.copyWith(scheduling: false, error: e.toString());
@@ -78,6 +94,8 @@ class DeviceTimerController extends StateNotifier<DeviceTimerState> {
   void cancel() {
     _ticker?.cancel();
     state = state.copyWith(active: false, endsAt: null, remaining: null);
+    // Note: Cancelling locally does NOT turn the device off.
+    // The backend still has the scheduled auto-off. User should manually turn off if needed.
   }
 
   void addTime(Duration extra) {
@@ -99,13 +117,22 @@ class DeviceTimerController extends StateNotifier<DeviceTimerState> {
       final now = DateTime.now();
       final remaining = state.endsAt!.difference(now);
       if (remaining <= Duration.zero) {
-        // Timer finished: we do not send an extra command; backend already will auto-off.
+        // Timer finished: backend auto-turns off the device
         _ticker?.cancel();
         state = state.copyWith(
           active: false,
           endsAt: null,
           remaining: Duration.zero,
         );
+
+        // SYNC: Mark device as OFF since the timer has elapsed
+        _ref
+            .read(deviceControlControllerProvider(state.deviceId).notifier)
+            .syncStateFromTimer(false);
+
+        // Also push synthetic OFF to realtime repo for immediate UI feedback
+        final rt = _ref.read(realtimeRepositoryProvider);
+        rt.pushSyntheticOff(state.deviceId);
       } else {
         state = state.copyWith(remaining: remaining);
       }
