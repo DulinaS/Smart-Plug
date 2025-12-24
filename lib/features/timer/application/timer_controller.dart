@@ -109,7 +109,7 @@ class DeviceTimerController extends StateNotifier<DeviceTimerState> {
 
   void _startTicker() {
     _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!isActive) {
         _ticker?.cancel();
         return;
@@ -117,13 +117,24 @@ class DeviceTimerController extends StateNotifier<DeviceTimerState> {
       final now = DateTime.now();
       final remaining = state.endsAt!.difference(now);
       if (remaining <= Duration.zero) {
-        // Timer finished: backend auto-turns off the device
+        // Timer finished: send explicit OFF command for immediate response
         _ticker?.cancel();
         state = state.copyWith(
           active: false,
           endsAt: null,
           remaining: Duration.zero,
         );
+
+        // **Removes Delay of 30-40s**
+        // Send explicit OFF command to turn off device immediately
+        // This ensures the device turns off exactly when timer reaches 0
+        // instead of waiting for backend's scheduled job (~30-40s delay)
+        try {
+          final repo = _ref.read(controlRepositoryProvider);
+          await repo.setOnOff(deviceId: state.deviceId, on: false);
+        } catch (_) {
+          // Best effort - backend scheduled job will turn it off anyway
+        }
 
         // SYNC: Mark device as OFF since the timer has elapsed
         _ref
