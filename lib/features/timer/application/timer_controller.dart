@@ -91,11 +91,27 @@ class DeviceTimerController extends StateNotifier<DeviceTimerState> {
     }
   }
 
-  void cancel() {
+  Future<void> cancel() async {
     _ticker?.cancel();
+    final deviceId = state.deviceId;
     state = state.copyWith(active: false, endsAt: null, remaining: null);
-    // Note: Cancelling locally does NOT turn the device off.
-    // The backend still has the scheduled auto-off. User should manually turn off if needed.
+
+    // Send OFF command to turn off the device immediately
+    try {
+      final repo = _ref.read(controlRepositoryProvider);
+      await repo.setOnOff(deviceId: deviceId, on: false);
+    } catch (_) {
+      // Best effort - continue with UI update even if command fails
+    }
+
+    // SYNC: Mark device as OFF
+    _ref
+        .read(deviceControlControllerProvider(deviceId).notifier)
+        .syncStateFromTimer(false);
+
+    // Push synthetic OFF to realtime repo for immediate UI feedback
+    final rt = _ref.read(realtimeRepositoryProvider);
+    rt.pushSyntheticOff(deviceId);
   }
 
   void addTime(Duration extra) {
