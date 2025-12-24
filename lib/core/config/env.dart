@@ -1,20 +1,33 @@
 class AppConfig {
-  // Keep your existing apiBaseUrl if needed elsewhere
   static const String apiBaseUrl = '';
 
-  // Add these new endpoints for friend's microservices
+  // Auth/login service
   static const String authBaseUrl =
       'https://so29fkbs68.execute-api.us-east-1.amazonaws.com/dev';
-  static const String deviceBaseUrl =
-      'https://ay5bnhzpve.execute-api.us-east-1.amazonaws.com/dev';
+
+  // Control/data endpoints
   static const String controlBaseUrl =
       'https://iqb73k9a2h.execute-api.us-east-1.amazonaws.com/device';
   static const String dataBaseUrl =
       'https://glpv8i3uvc.execute-api.us-east-1.amazonaws.com/devices';
+
+  // User Device Service
+  static const String userDeviceBaseUrl =
+      'https://ot7ogb06pf.execute-api.us-east-1.amazonaws.com/user-device';
+
   static const String scheduleBaseUrl =
       'https://6b2vmyctvb.execute-api.us-east-1.amazonaws.com/dev';
 
-  // Update existing endpoints
+  // Convenience endpoints
   static const String latestReadingEndpoint = '$dataBaseUrl/latest';
   static const String controlEndpoint = '$controlBaseUrl/command';
+
+  // Daily summary endpoint
+  static const String daySummaryEndpoint = '$dataBaseUrl/day';
+
+  // NEW: Period (date range) summary
+  static const String periodSummaryEndpoint = '$dataBaseUrl/getDataByDateRange';
+
+  //Scheduling endpoint
+  static const String scheduleCommandEndpoint = '$controlBaseUrl/schedule';
 }

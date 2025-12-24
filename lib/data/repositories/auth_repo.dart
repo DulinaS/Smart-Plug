@@ -14,71 +14,83 @@ class AuthRepository {
   Future<Map<String, dynamic>> signUp(
     String email,
     String password,
-    String fullName,
-  ) async {
+    String fullName, {
+    // NEW: make billingType selectable, default General for flows like resend
+    BillingType billingType = BillingType.general,
+  }) async {
     try {
-      print('🔵 Attempting signup to: ${AppConfig.authBaseUrl}/signup');
-      print('📧 Email: $email');
-
       final response = await _httpClient.dio.post(
         '${AppConfig.authBaseUrl}/signup',
-        data: {'email': email, 'password': password, 'fullName': fullName},
+        data: {
+          'email': email,
+          'password': password,
+          'fullName': fullName,
+          'billingType': billingType.toApiString(), // NEW
+        },
       );
-
-      print('✅ Signup response: ${response.data}');
       return response.data;
     } on DioException catch (e) {
-      print('❌ Signup DioException:');
-      print('   Status: ${e.response?.statusCode}');
-      print('   Data: ${e.response?.data}');
-      print('   Message: ${e.message}');
       throw _handleError(e);
-    } catch (e) {
-      print('❌ Signup unexpected error: $e');
-      rethrow;
     }
   }
 
   Future<User> login(String email, String password) async {
     try {
-      print('🔵 Attempting login to: ${AppConfig.authBaseUrl}/login');
-      print('📧 Email: $email');
-
       final response = await _httpClient.dio.post(
         '${AppConfig.authBaseUrl}/login',
         data: {'email': email, 'password': password},
       );
 
-      print('✅ Login response: ${response.data}');
-      final data = response.data;
+      final data = response.data as Map<String, dynamic>;
+      final token = (data['accessToken'] ?? data['token']) as String?;
+      if (token != null) {
+        await _secureStore.saveAuthToken(token);
+      }
+      final refresh =
+          (data['refreshToken'] ?? data['refresh_token']) as String?;
+      if (refresh != null) {
+        await _secureStore.saveRefreshToken(refresh);
+      }
 
-      if (data['accessToken'] != null) {
-        await _secureStore.saveAuthToken(data['accessToken']);
-        print('✅ Token saved');
-      }
-      if (data['refreshToken'] != null) {
-        await _secureStore.saveRefreshToken(data['refreshToken']);
-      }
-      if (data['sub'] != null) {
-        await _secureStore.saveUserId(data['sub']);
-      }
+      final nestedUser = data['user'] as Map<String, dynamic>?;
+      final userId =
+          (data['sub'] as String?) ??
+          (nestedUser?['id'] as String?) ??
+          (data['id'] as String?) ??
+          'unknown';
+      await _secureStore.saveUserId(userId);
+
+      final emailFromResponse =
+          (data['email'] ?? nestedUser?['email'] ?? email) as String;
+      await _secureStore.saveUserEmail(emailFromResponse);
+
+      final usernameFromResponse =
+          (data['username'] ??
+                  nestedUser?['username'] ??
+                  emailFromResponse.split('@')[0])
+              as String;
+      final displayNameFromResponse =
+          (data['name'] ?? nestedUser?['displayName']) as String?;
+
+      // NEW: pull billingType from API if present, else default to General
+      final rawBilling = (data['billingType'] ?? nestedUser?['billingType'])
+          ?.toString();
+      final billing = BillingTypeX.fromString(rawBilling);
+      // Persist for cold start restore
+      await _secureStore.saveUsername(usernameFromResponse);
+      await _secureStore.saveDisplayName(displayNameFromResponse);
+      await _secureStore.saveUserBillingType(billing.toApiString());
 
       return User(
-        id: data['sub'] ?? 'unknown',
-        email: data['email'] ?? email,
-        username: data['username'] ?? email.split('@')[0],
-        displayName: data['name'],
+        id: userId,
+        email: emailFromResponse,
+        username: usernameFromResponse,
+        displayName: displayNameFromResponse,
         createdAt: DateTime.now(),
+        billingType: billing, // NEW
       );
     } on DioException catch (e) {
-      print('❌ Login DioException:');
-      print('   Status: ${e.response?.statusCode}');
-      print('   Data: ${e.response?.data}');
-      print('   Message: ${e.message}');
       throw _handleError(e);
-    } catch (e) {
-      print('❌ Login unexpected error: $e');
-      rethrow;
     }
   }
 
@@ -98,30 +110,37 @@ class AuthRepository {
     await _secureStore.clearAll();
   }
 
+  // Restore profile on app start using persisted values
   Future<User?> getCurrentUser() async {
     try {
       final token = await _secureStore.getAuthToken();
       final userId = await _secureStore.getUserId();
+      final email = await _secureStore.getUserEmail();
+      if (token == null || userId == null || email == null) return null;
 
-      if (token == null || userId == null) return null;
+      final username =
+          (await _secureStore.getUsername()) ?? email.split('@').first;
+      final displayName = await _secureStore.getDisplayName();
+      final btRaw = (await _secureStore.getUserBillingType()) ?? 'General';
+      final billing = BillingTypeX.fromString(btRaw);
 
       return User(
         id: userId,
-        email: 'cached@user.com',
-        username: 'user',
+        email: email,
+        username: username,
+        displayName: displayName,
         createdAt: DateTime.now(),
+        billingType: billing, // NEW
       );
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
   String _handleError(DioException e) {
-    if (e.response?.statusCode == 401) {
-      return 'Invalid credentials';
-    } else if (e.response?.statusCode == 409) {
-      return 'User already exists';
-    } else if (e.response?.data?['message'] != null) {
+    if (e.response?.statusCode == 401) return 'Invalid credentials';
+    if (e.response?.statusCode == 409) return 'User already exists';
+    if (e.response?.data?['message'] != null) {
       return e.response!.data['message'];
     }
     return 'Authentication failed';

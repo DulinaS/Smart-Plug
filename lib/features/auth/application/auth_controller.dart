@@ -4,28 +4,37 @@ import '../../../data/repositories/auth_repo.dart';
 
 class AuthState {
   final User? user;
+  final bool isAuthenticated;
   final bool isLoading;
   final String? error;
-  final bool isAuthenticated;
+  final bool requiresEmailVerification;
+  final String? pendingEmail; // Store email for verification flow
 
   const AuthState({
     this.user,
+    this.isAuthenticated = false,
     this.isLoading = false,
     this.error,
-    this.isAuthenticated = false,
+    this.requiresEmailVerification = false,
+    this.pendingEmail,
   });
 
   AuthState copyWith({
     User? user,
+    bool? isAuthenticated,
     bool? isLoading,
     String? error,
-    bool? isAuthenticated,
+    bool? requiresEmailVerification,
+    String? pendingEmail,
   }) {
     return AuthState(
       user: user ?? this.user,
+      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       isLoading: isLoading ?? this.isLoading,
       error: error,
-      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      requiresEmailVerification:
+          requiresEmailVerification ?? this.requiresEmailVerification,
+      pendingEmail: pendingEmail ?? this.pendingEmail,
     );
   }
 }
@@ -34,9 +43,7 @@ class AuthController extends StateNotifier<AuthState> {
   final AuthRepository _authRepository;
 
   AuthController(this._authRepository) : super(const AuthState()) {
-    //_checkAuthStatus();
-    // For testing purposes, we can mock a login
-    _mockLogin();
+    _checkAuthStatus();
   }
 
   Future<void> _checkAuthStatus() async {
@@ -61,32 +68,70 @@ class AuthController extends StateNotifier<AuthState> {
         user: user,
         isAuthenticated: true,
         isLoading: false,
+        requiresEmailVerification: false,
+        pendingEmail: null,
       );
     } catch (e) {
-      state = state.copyWith(error: e.toString(), isLoading: false);
+      final errorMessage = e.toString();
+      if (errorMessage.contains('UserNotConfirmedException') ||
+          errorMessage.contains('not verified')) {
+        state = state.copyWith(
+          error: 'Please verify your email before logging in',
+          isLoading: false,
+          requiresEmailVerification: true,
+          pendingEmail: email,
+        );
+      } else {
+        state = state.copyWith(error: errorMessage, isLoading: false);
+      }
     }
   }
 
-  Future<void> register(String email, String password, String fullName) async {
+  // UPDATED: include billingType
+  Future<void> register(
+    String email,
+    String password,
+    String fullName, {
+    BillingType billingType = BillingType.general,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _authRepository.signUp(email, password, fullName);
-      state = state.copyWith(isLoading: false);
-      // User needs to verify email before logging in
+      final response = await _authRepository.signUp(
+        email,
+        password,
+        fullName,
+        billingType: billingType,
+      );
+
+      if (response['requiresEmailVerification'] == true) {
+        state = state.copyWith(
+          isLoading: false,
+          requiresEmailVerification: true,
+          pendingEmail: email,
+        );
+      } else {
+        state = state.copyWith(isLoading: false);
+      }
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
 
-  // ALSO ADD THIS METHOD for email confirmation:
   Future<void> confirmEmail(String email, String code) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final confirmed = await _authRepository.confirmSignUp(email, code);
       if (confirmed) {
-        state = state.copyWith(isLoading: false);
+        state = state.copyWith(
+          isLoading: false,
+          requiresEmailVerification: false,
+          pendingEmail: null,
+        );
       } else {
-        state = state.copyWith(error: 'Verification failed', isLoading: false);
+        state = state.copyWith(
+          error: 'Invalid verification code. Please try again.',
+          isLoading: false,
+        );
       }
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
@@ -107,20 +152,10 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(error: null);
   }
 
-  void _mockLogin() {
-    // Create a fake user for testing
-    final mockUser = User(
-      id: 'mock-user-123',
-      email: 'dulina@gmail.com',
-      username: 'testuser',
-      displayName: 'Dulina User',
-      createdAt: DateTime.now(),
-    );
-
+  void resetVerificationState() {
     state = state.copyWith(
-      user: mockUser,
-      isAuthenticated: true,
-      isLoading: false,
+      requiresEmailVerification: false,
+      pendingEmail: null,
     );
   }
 }

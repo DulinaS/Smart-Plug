@@ -65,7 +65,7 @@ class SettingsScreen extends ConsumerWidget {
               title: Text('API Integration Tests'),
               subtitle: Text('Test backend connectivity'),
             ),
-            _buildTestButtons(context, ref),
+            //_buildTestButtons(context, ref),
             Divider(),
           ],
 
@@ -356,7 +356,7 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  //TEST BUTTONS
+  /*   //TEST BUTTONS
   Widget _buildTestButtons(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: EdgeInsets.all(16),
@@ -556,7 +556,7 @@ class SettingsScreen extends ConsumerWidget {
       _showResult(context, 'Analytics Test', 'Error: $e');
     }
   }
-
+ */
   void _showResult(BuildContext context, String title, String message) {
     showDialog(
       context: context,

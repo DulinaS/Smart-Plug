@@ -5,6 +5,7 @@ import '../../../core/utils/validators.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/loading_widget.dart';
 import '../application/auth_controller.dart';
+import '../../../data/models/user.dart'; // for BillingType
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -22,6 +23,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  // NEW: selected billing type
+  BillingType _billingType = BillingType.general;
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -37,25 +41,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
       if (next.error != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.error!)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.error!), backgroundColor: Colors.red),
+        );
         ref.read(authControllerProvider.notifier).clearError();
       }
 
-      // Registration successful, show success message
-      if (!next.isLoading &&
-          next.error == null &&
-          previous?.isLoading == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Registration successful! Please verify your email and login.',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-        context.go('/login');
+      final justFinishedSignup =
+          previous?.isLoading == true && next.isLoading == false;
+      if (justFinishedSignup &&
+          next.requiresEmailVerification &&
+          next.pendingEmail != null) {
+        final email = Uri.encodeComponent(next.pendingEmail!);
+        context.go('/confirm-signup?email=$email');
       }
     });
 
@@ -71,8 +69,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 24),
-
-                  // Logo and Title
                   const Icon(Icons.person_add, size: 64, color: Colors.blue),
                   const SizedBox(height: 24),
                   Text(
@@ -92,7 +88,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 48),
 
-                  // Username Field
+                  // Username
                   TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
@@ -105,7 +101,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Email Field
+                  // Email
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -118,7 +114,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Password Field
+                  // Password
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -141,7 +137,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Confirm Password Field
+                  // Confirm password
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: _obscureConfirmPassword,
@@ -170,7 +166,36 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Register Button
+                  // NEW: Billing type selector (segmented buttons)
+                  Text(
+                    'Billing type',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<BillingType>(
+                    segments: const [
+                      ButtonSegment(
+                        value: BillingType.general,
+                        label: Text('General'),
+                        icon: Icon(Icons.person_outline),
+                      ),
+                      ButtonSegment(
+                        value: BillingType.enterprise,
+                        label: Text('Enterprise'),
+                        icon: Icon(Icons.apartment_outlined),
+                      ),
+                    ],
+                    selected: {_billingType},
+                    onSelectionChanged: (selection) {
+                      if (selection.isNotEmpty) {
+                        setState(() => _billingType = selection.first);
+                      }
+                    },
+                    showSelectedIcon: false,
+                    style: ButtonStyle(visualDensity: VisualDensity.compact),
+                  ),
+                  const SizedBox(height: 24),
+
                   authState.isLoading
                       ? const LoadingWidget()
                       : CustomButton(
@@ -179,7 +204,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ),
                   const SizedBox(height: 16),
 
-                  // Login Link
                   TextButton(
                     onPressed: () => context.go('/login'),
                     child: const Text('Already have an account? Sign in'),
@@ -201,6 +225,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             _emailController.text.trim(),
             _passwordController.text,
             _usernameController.text.trim(),
+            billingType: _billingType, // NEW
           );
     }
   }
