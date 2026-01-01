@@ -34,18 +34,14 @@ class CurvedHeader extends StatelessWidget {
                 top: MediaQuery.of(context).padding.top,
                 bottom: 24,
               ),
-              decoration: BoxDecoration(
-                gradient: gradient ?? _defaultGradient,
-              ),
+              decoration: BoxDecoration(gradient: gradient ?? _defaultGradient),
               child: Stack(
                 children: [
                   // Decorative elements
                   _buildDecorativeOrbs(),
                   // Glass noise overlay
                   Positioned.fill(
-                    child: CustomPaint(
-                      painter: _HeaderNoisePainter(),
-                    ),
+                    child: CustomPaint(painter: _HeaderNoisePainter()),
                   ),
                   // Content
                   child,
@@ -70,15 +66,15 @@ class CurvedHeader extends StatelessWidget {
   }
 
   LinearGradient get _defaultGradient => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          AppTheme.primaryColor.withOpacity(0.4),
-          AppTheme.darkSurface.withOpacity(0.95),
-          AppTheme.darkBackground,
-        ],
-        stops: const [0.0, 0.5, 1.0],
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      AppTheme.primaryColor.withOpacity(0.4),
+      AppTheme.darkSurface.withOpacity(0.95),
+      AppTheme.darkBackground,
+    ],
+    stops: const [0.0, 0.5, 1.0],
+  );
 
   Widget _buildDecorativeOrbs() {
     return Stack(
@@ -144,8 +140,9 @@ class CurvedHeader extends StatelessWidget {
 }
 
 // Standard header height constants for consistency across screens
-const double kHeaderContentHeight = 120.0;  // For ScreenHeader (simpler layout)
-const double kHomeHeaderContentHeight = 160.0;  // For HomeHeader (with welcome card)
+const double kHeaderContentHeight = 120.0; // For ScreenHeader (simpler layout)
+const double kHomeHeaderContentHeight =
+    160.0; // For HomeHeader (with welcome card)
 
 /// Home screen specific header with welcome message and modern design
 class HomeHeader extends StatelessWidget {
@@ -167,7 +164,7 @@ class HomeHeader extends StatelessWidget {
     final greeting = _getGreeting();
     final topPadding = MediaQuery.of(context).padding.top;
     final headerHeight = topPadding + kHomeHeaderContentHeight;
-    
+
     return Container(
       width: double.infinity,
       // Fixed height to prevent layout issues
@@ -274,12 +271,18 @@ class HomeHeader extends StatelessWidget {
       Positioned(
         top: 80,
         right: 60,
-        child: _SparkleOrb(size: 4, color: AppTheme.secondaryColor.withOpacity(0.6)),
+        child: _SparkleOrb(
+          size: 4,
+          color: AppTheme.secondaryColor.withOpacity(0.6),
+        ),
       ),
       Positioned(
         bottom: 50,
         left: 100,
-        child: _SparkleOrb(size: 5, color: AppTheme.accentColor.withOpacity(0.5)),
+        child: _SparkleOrb(
+          size: 5,
+          color: AppTheme.accentColor.withOpacity(0.5),
+        ),
       ),
       Positioned(
         bottom: 80,
@@ -439,7 +442,7 @@ class ScreenHeader extends StatelessWidget {
     final color = accentColor ?? AppTheme.primaryColor;
     final topPadding = MediaQuery.of(context).padding.top;
     final headerHeight = topPadding + kHeaderContentHeight;
-    
+
     return Container(
       width: double.infinity,
       height: headerHeight,
@@ -481,10 +484,7 @@ class ScreenHeader extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
-                          colors: [
-                            color.withOpacity(0.3),
-                            Colors.transparent,
-                          ],
+                          colors: [color.withOpacity(0.3), Colors.transparent],
                         ),
                       ),
                     ),
@@ -526,9 +526,7 @@ class ScreenHeader extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: color.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: color.withOpacity(0.3),
-                            ),
+                            border: Border.all(color: color.withOpacity(0.3)),
                           ),
                           child: Icon(icon, color: color, size: 24),
                         ),
@@ -565,10 +563,12 @@ class ScreenHeader extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: actions!
-                              .map((a) => Padding(
-                                    padding: const EdgeInsets.only(left: 8),
-                                    child: a,
-                                  ))
+                              .map(
+                                (a) => Padding(
+                                  padding: const EdgeInsets.only(left: 8),
+                                  child: a,
+                                ),
+                              )
                               .toList(),
                         ),
                     ],
@@ -583,10 +583,7 @@ class ScreenHeader extends StatelessWidget {
             right: 0,
             bottom: 0,
             child: CustomPaint(
-              painter: _GlowingBorderPainter(
-                borderRadius: 36,
-                color: color,
-              ),
+              painter: _GlowingBorderPainter(borderRadius: 36, color: color),
               size: const Size(double.infinity, 0),
             ),
           ),
@@ -625,9 +622,7 @@ class _HeaderIconButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.15),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
             ),
             child: Stack(
               alignment: Alignment.center,
@@ -728,9 +723,10 @@ class _AnimatedOrbState extends State<_AnimatedOrb>
       duration: const Duration(seconds: 4),
       vsync: this,
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -785,9 +781,10 @@ class _SparkleOrbState extends State<_SparkleOrb>
       duration: const Duration(milliseconds: 2000),
       vsync: this,
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -842,9 +839,10 @@ class _GlowingAnimatedBorderState extends State<_GlowingAnimatedBorder>
       duration: const Duration(seconds: 3),
       vsync: this,
     )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _animation = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -931,18 +929,8 @@ class _GlowingBorderPainter extends CustomPainter {
 
     final path = Path();
     path.moveTo(0, -borderRadius);
-    path.quadraticBezierTo(
-      size.width * 0.25,
-      10,
-      size.width * 0.5,
-      -5,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75,
-      -20,
-      size.width,
-      -borderRadius,
-    );
+    path.quadraticBezierTo(size.width * 0.25, 10, size.width * 0.5, -5);
+    path.quadraticBezierTo(size.width * 0.75, -20, size.width, -borderRadius);
 
     canvas.drawPath(path, paint);
 

@@ -897,10 +897,7 @@ class _UserProfileCard extends StatelessWidget {
             Colors.white.withOpacity(0.05),
           ],
         ),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.15),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
       ),
       child: Row(
         children: [
@@ -921,7 +918,9 @@ class _UserProfileCard extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                (user.displayName ?? user.username).substring(0, 1).toUpperCase(),
+                (user.displayName ?? user.username)
+                    .substring(0, 1)
+                    .toUpperCase(),
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,

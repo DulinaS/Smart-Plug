@@ -56,7 +56,9 @@ class SchedulesScreen extends ConsumerWidget {
                         padding: EdgeInsets.only(top: 32),
                         child: Center(
                           child: CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation(AppTheme.primaryColor),
+                            valueColor: AlwaysStoppedAnimation(
+                              AppTheme.primaryColor,
+                            ),
                           ),
                         ),
                       )
@@ -347,10 +349,17 @@ class SchedulesScreen extends ConsumerWidget {
                 color: AppTheme.primaryColor.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.help_rounded, color: AppTheme.primaryColor, size: 20),
+              child: Icon(
+                Icons.help_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 12),
-            const Text('About Schedules', style: TextStyle(color: Colors.white)),
+            const Text(
+              'About Schedules',
+              style: TextStyle(color: Colors.white),
+            ),
           ],
         ),
         content: Column(
@@ -409,7 +418,10 @@ class SchedulesScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text('Got it', style: TextStyle(color: AppTheme.primaryColor)),
+            child: Text(
+              'Got it',
+              style: TextStyle(color: AppTheme.primaryColor),
+            ),
           ),
         ],
       ),
@@ -467,15 +479,9 @@ class _HeaderActionButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.15),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white.withOpacity(0.9),
-              size: 20,
-            ),
+            child: Icon(icon, color: Colors.white.withOpacity(0.9), size: 20),
           ),
         ),
       ),

@@ -57,16 +57,14 @@ class _SummaryHubScreenState extends ConsumerState<SummaryHubScreen>
               icon: Icons.analytics_rounded,
               accentColor: AppTheme.secondaryColor,
             ),
-            const SizedBox(height: 12),  // Spacing between header and tabs
+            const SizedBox(height: 12), // Spacing between header and tabs
             // Tab bar
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
-                ),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
               child: TabBar(
                 controller: _tabs,

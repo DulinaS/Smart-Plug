@@ -94,8 +94,9 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                   actions: [
                     _DetailHeaderActionButton(
                       icon: Icons.refresh_rounded,
-                      onTap: () =>
-                          ref.read(userDevicesControllerProvider.notifier).refresh(),
+                      onTap: () => ref
+                          .read(userDevicesControllerProvider.notifier)
+                          .refresh(),
                       tooltip: 'Refresh',
                     ),
                   ],
@@ -115,7 +116,9 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor.withOpacity(0.2),
+                                    color: AppTheme.primaryColor.withOpacity(
+                                      0.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
@@ -136,10 +139,26 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            _buildInfoRow(context, 'Device ID', device.deviceId),
-                            _buildInfoRow(context, 'Display Name', device.deviceName),
-                            _buildInfoRow(context, 'Room', device.roomName ?? '-'),
-                            _buildInfoRow(context, 'Plug Type', device.plugType ?? '-'),
+                            _buildInfoRow(
+                              context,
+                              'Device ID',
+                              device.deviceId,
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Display Name',
+                              device.deviceName,
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Room',
+                              device.roomName ?? '-',
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Plug Type',
+                              device.plugType ?? '-',
+                            ),
                             _buildInfoRow(
                               context,
                               'Linked At',
@@ -165,7 +184,9 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.successColor.withOpacity(0.2),
+                                    color: AppTheme.successColor.withOpacity(
+                                      0.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
@@ -196,7 +217,7 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
                           ],
                         ),
                       ),
-                      
+
                       // Bottom padding
                       SizedBox(height: AppTheme.navBarTotalHeight),
                     ],
@@ -273,15 +294,9 @@ class _DetailHeaderActionButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.15),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white.withOpacity(0.9),
-              size: 20,
-            ),
+            child: Icon(icon, color: Colors.white.withOpacity(0.9), size: 20),
           ),
         ),
       ),

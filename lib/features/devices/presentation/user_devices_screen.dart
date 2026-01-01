@@ -61,8 +61,9 @@ class UserDevicesScreen extends ConsumerWidget {
                   return RefreshIndicator(
                     color: AppTheme.primaryColor,
                     backgroundColor: AppTheme.darkCard,
-                    onRefresh: () =>
-                        ref.read(userDevicesControllerProvider.notifier).refresh(),
+                    onRefresh: () => ref
+                        .read(userDevicesControllerProvider.notifier)
+                        .refresh(),
                     child: ListView.builder(
                       padding: EdgeInsets.fromLTRB(
                         16,
@@ -96,8 +97,9 @@ class UserDevicesScreen extends ConsumerWidget {
                         height: 50,
                         child: CircularProgressIndicator(
                           strokeWidth: 3,
-                          valueColor:
-                              AlwaysStoppedAnimation(AppTheme.primaryColor),
+                          valueColor: AlwaysStoppedAnimation(
+                            AppTheme.primaryColor,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -110,8 +112,9 @@ class UserDevicesScreen extends ConsumerWidget {
                 ),
                 error: (e, _) => _ErrorState(
                   error: e.toString(),
-                  onRetry: () =>
-                      ref.read(userDevicesControllerProvider.notifier).refresh(),
+                  onRetry: () => ref
+                      .read(userDevicesControllerProvider.notifier)
+                      .refresh(),
                 ),
               ),
             ),
