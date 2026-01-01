@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../app/theme.dart';
+import '../../../../core/widgets/modern_ui.dart';
 import '../../../devices/application/user_devices_controller.dart';
 import '../../../device_detail/application/device_control_controller.dart';
-import '../../../../core/widgets/error_inline_banner.dart';
 
 class QuickControlCard extends ConsumerWidget {
   final UserDeviceView device;
@@ -16,131 +17,151 @@ class QuickControlCard extends ConsumerWidget {
       deviceControlControllerProvider(device.deviceId).notifier,
     );
 
-    Color _statusColor() {
-      if (control.busy) return Colors.amber;
+    Color statusColor() {
+      if (control.busy) return AppTheme.warningColor;
       if (control.isOn == null) return Colors.grey;
-      return control.isOn! ? Colors.green : Colors.red;
+      return control.isOn! ? AppTheme.successColor : AppTheme.errorColor;
     }
 
-    final compactStyle = ButtonStyle(
-      padding: WidgetStateProperty.all(
-        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+    return GlassCard(
+      onTap: () => context.push('/device/${device.deviceId}'),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: statusColor().withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.power_rounded,
+                  color: statusColor(),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  device.deviceName.isNotEmpty
+                      ? device.deviceName
+                      : device.deviceId,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              PulsingDot(color: statusColor(), size: 8),
+            ],
+          ),
+
+          if ((device.roomName ?? '').isNotEmpty ||
+              (device.plugType ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              [
+                if ((device.roomName ?? '').isNotEmpty) device.roomName!,
+                if ((device.plugType ?? '').isNotEmpty) device.plugType!,
+              ].join(' • '),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.white54),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+
+          const Spacer(),
+
+          // Control buttons
+          Row(
+            children: [
+              Expanded(
+                child: _ControlButton(
+                  label: 'On',
+                  isActive: control.isOn == true,
+                  isLoading: control.busy,
+                  onPressed: control.busy ? null : () => ctrl.setOn(true),
+                  activeColor: AppTheme.successColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ControlButton(
+                  label: 'Off',
+                  isActive: control.isOn == false,
+                  isLoading: false,
+                  onPressed: control.busy ? null : () => ctrl.setOn(false),
+                  activeColor: AppTheme.errorColor,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      minimumSize: WidgetStateProperty.all(const Size(0, 32)),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
     );
+  }
+}
 
-    return Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: () => context.push('/device/${device.deviceId}'),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          // Tighter padding for compact layout
-          padding: const EdgeInsets.all(10.0),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Compact mode thresholds
-              final showSubtitle = constraints.maxHeight >= 165;
+class _ControlButton extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final bool isLoading;
+  final VoidCallback? onPressed;
+  final Color activeColor;
 
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with tiny status dot
-                  Row(
-                    children: [
-                      const Icon(Icons.power_outlined, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          device.deviceName.isNotEmpty
-                              ? device.deviceName
-                              : device.deviceId,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+  const _ControlButton({
+    required this.label,
+    required this.isActive,
+    required this.isLoading,
+    required this.onPressed,
+    required this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      child: Material(
+        color: isActive ? activeColor.withOpacity(0.2) : AppTheme.darkCard,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isActive ? activeColor : Colors.white.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: Center(
+              child: isLoading
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: activeColor,
                       ),
-                      const SizedBox(width: 8),
-                      Tooltip(
-                        message: control.busy
-                            ? 'Updating…'
-                            : control.isOn == null
-                            ? 'Unknown'
-                            : control.isOn!
-                            ? 'Requested: ON'
-                            : 'Requested: OFF',
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: _statusColor(),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
+                    )
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        color: isActive ? activeColor : Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
                       ),
-                    ],
-                  ),
-
-                  if (showSubtitle &&
-                      ((device.roomName ?? '').isNotEmpty ||
-                          (device.plugType ?? '').isNotEmpty)) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      [
-                        if ((device.roomName ?? '').isNotEmpty)
-                          device.roomName!,
-                        if ((device.plugType ?? '').isNotEmpty)
-                          device.plugType!,
-                      ].join(' • '),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-
-                  const Spacer(),
-
-                  // Controls row (compact)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: control.busy
-                              ? null
-                              : () => ctrl.setOn(true),
-                          style: compactStyle,
-                          child: control.busy
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('On'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: control.busy
-                              ? null
-                              : () => ctrl.setOn(false),
-                          style: compactStyle,
-                          child: const Text('Off'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
+            ),
           ),
         ),
       ),

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../data/repositories/analytics_repo.dart';
-import '../../../data/repositories/auth_repo.dart';
-import '../../../data/repositories/device_repo.dart';
-import '../../../data/repositories/schedule_repo.dart';
+import '../../../app/theme.dart';
+import '../../../core/widgets/modern_ui.dart';
+import '../../../core/widgets/curved_header.dart';
 import '../../auth/application/auth_controller.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -15,178 +13,147 @@ class SettingsScreen extends ConsumerWidget {
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          // User Profile Section
-          if (user != null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.blue,
-                      child: Text(
-                        (user.displayName ?? user.username)
-                            .substring(0, 1)
-                            .toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      user.displayName ?? user.username,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user.email,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                    ),
-                  ],
+    return MeshGradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: CustomScrollView(
+          slivers: [
+            // Beautiful Curved Settings Header - using standardized header
+            SliverToBoxAdapter(
+              child: ScreenHeader(
+                title: 'Settings',
+                icon: Icons.settings_rounded,
+                accentColor: AppTheme.accentColor,
+              ),
+            ),
+            // User Profile Card
+            if (user != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: _UserProfileCard(user: user),
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-            Divider(),
-            ListTile(
-              title: Text('API Integration Tests'),
-              subtitle: Text('Test backend connectivity'),
-            ),
-            //_buildTestButtons(context, ref),
-            Divider(),
-          ],
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  // Account Settings
+                  const SectionHeader(title: 'Account'),
+                  const SizedBox(height: 8),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.person_rounded,
+                    title: 'Profile',
+                    subtitle: 'Update your personal information',
+                    gradient: AppTheme.primaryGradient,
+                    onTap: () => _showComingSoon(context, 'Profile Settings'),
+                  ),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.security_rounded,
+                    title: 'Security',
+                    subtitle: 'Change password and security settings',
+                    gradient: AppTheme.accentGradient,
+                    onTap: () => _showComingSoon(context, 'Security Settings'),
+                  ),
 
-          // Account Settings
-          _buildSectionHeader(context, 'Account'),
-          _buildSettingsTile(
-            context,
-            icon: Icons.person,
-            title: 'Profile',
-            subtitle: 'Update your personal information',
-            onTap: () => _showComingSoon(context, 'Profile Settings'),
-          ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.security,
-            title: 'Security',
-            subtitle: 'Change password and security settings',
-            onTap: () => _showComingSoon(context, 'Security Settings'),
-          ),
+                  const SizedBox(height: 24),
 
-          const SizedBox(height: 16),
+                  // App Settings
+                  const SectionHeader(title: 'App Settings'),
+                  const SizedBox(height: 8),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.palette_rounded,
+                    title: 'Theme',
+                    subtitle: 'Light, dark, or system default',
+                    gradient: AppTheme.cardGradient,
+                    onTap: () => _showThemeDialog(context),
+                  ),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.notifications_rounded,
+                    title: 'Notifications',
+                    subtitle: 'Manage notification preferences',
+                    gradient: AppTheme.cardGradient,
+                    onTap: () =>
+                        _showComingSoon(context, 'Notification Settings'),
+                  ),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.language_rounded,
+                    title: 'Language',
+                    subtitle: 'Choose your preferred language',
+                    gradient: AppTheme.cardGradient,
+                    onTap: () => _showLanguageDialog(context),
+                  ),
 
-          // App Settings
-          _buildSectionHeader(context, 'App Settings'),
-          _buildSettingsTile(
-            context,
-            icon: Icons.palette,
-            title: 'Theme',
-            subtitle: 'Light, dark, or system default',
-            onTap: () => _showThemeDialog(context),
-          ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.notifications,
-            title: 'Notifications',
-            subtitle: 'Manage notification preferences',
-            onTap: () => _showComingSoon(context, 'Notification Settings'),
-          ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.language,
-            title: 'Language',
-            subtitle: 'Choose your preferred language',
-            onTap: () => _showLanguageDialog(context),
-          ),
+                  const SizedBox(height: 24),
 
-          const SizedBox(height: 16),
+                  // Energy Settings
+                  const SectionHeader(title: 'Energy'),
+                  const SizedBox(height: 8),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.currency_exchange_rounded,
+                    title: 'Electricity Tariffs',
+                    subtitle: 'Configure CEB tariff rates',
+                    gradient: AppTheme.successGradient,
+                    onTap: () => _showTariffDialog(context),
+                  ),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.schedule_rounded,
+                    title: 'Usage Alerts',
+                    subtitle: 'Set consumption and cost alerts',
+                    gradient: AppTheme.successGradient,
+                    onTap: () => _showComingSoon(context, 'Usage Alerts'),
+                  ),
 
-          // Energy Settings
-          _buildSectionHeader(context, 'Energy'),
-          _buildSettingsTile(
-            context,
-            icon: Icons.currency_exchange,
-            title: 'Electricity Tariffs',
-            subtitle: 'Configure CEB tariff rates',
-            onTap: () => _showTariffDialog(context),
-          ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.schedule,
-            title: 'Usage Alerts',
-            subtitle: 'Set consumption and cost alerts',
-            onTap: () => _showComingSoon(context, 'Usage Alerts'),
-          ),
+                  const SizedBox(height: 24),
 
-          const SizedBox(height: 16),
+                  // Support
+                  const SectionHeader(title: 'Support'),
+                  const SizedBox(height: 8),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.help_rounded,
+                    title: 'Help & FAQ',
+                    subtitle: 'Get help with common questions',
+                    gradient: AppTheme.cardGradient,
+                    onTap: () => _showComingSoon(context, 'Help & FAQ'),
+                  ),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.feedback_rounded,
+                    title: 'Send Feedback',
+                    subtitle: 'Help us improve the app',
+                    gradient: AppTheme.cardGradient,
+                    onTap: () => _showComingSoon(context, 'Send Feedback'),
+                  ),
+                  _buildSettingsTile(
+                    context,
+                    icon: Icons.info_rounded,
+                    title: 'About',
+                    subtitle: 'App version and information',
+                    gradient: AppTheme.cardGradient,
+                    onTap: () => _showAboutDialog(context),
+                  ),
 
-          // Support
-          _buildSectionHeader(context, 'Support'),
-          _buildSettingsTile(
-            context,
-            icon: Icons.help,
-            title: 'Help & FAQ',
-            subtitle: 'Get help with common questions',
-            onTap: () => _showComingSoon(context, 'Help & FAQ'),
-          ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.feedback,
-            title: 'Send Feedback',
-            subtitle: 'Help us improve the app',
-            onTap: () => _showComingSoon(context, 'Send Feedback'),
-          ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.info,
-            title: 'About',
-            subtitle: 'App version and information',
-            onTap: () => _showAboutDialog(context),
-          ),
+                  const SizedBox(height: 32),
 
-          const SizedBox(height: 24),
+                  // Logout Button
+                  _LogoutButton(
+                    onPressed: () => _showLogoutDialog(context, ref),
+                  ),
 
-          // Logout Button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => _showLogoutDialog(context, ref),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                  // Bottom padding to account for navbar
+                  SizedBox(height: AppTheme.navBarTotalHeight),
+                ]),
               ),
-              child: const Text('Sign Out'),
             ),
-          ),
-
-          const SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Colors.blue,
+          ],
         ),
       ),
     );
@@ -198,14 +165,54 @@ class SettingsScreen extends ConsumerWidget {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    required Gradient gradient,
   }) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon, color: Colors.blue),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GlassCard(
         onTap: onTap,
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: gradient,
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 16,
+              color: Colors.white.withOpacity(0.4),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -214,12 +221,17 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(feature),
-        content: Text('$feature will be available in a future update.'),
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(feature, style: const TextStyle(color: Colors.white)),
+        content: Text(
+          '$feature will be available in a future update.',
+          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+            child: Text('OK', style: TextStyle(color: AppTheme.primaryColor)),
           ),
         ],
       ),
@@ -230,24 +242,32 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Choose Theme'),
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Choose Theme',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.light_mode),
-              title: const Text('Light'),
-              onTap: () => Navigator.of(context).pop(),
+            _buildThemeOption(
+              context,
+              icon: Icons.light_mode_rounded,
+              title: 'Light',
+              isSelected: false,
             ),
-            ListTile(
-              leading: const Icon(Icons.dark_mode),
-              title: const Text('Dark'),
-              onTap: () => Navigator.of(context).pop(),
+            _buildThemeOption(
+              context,
+              icon: Icons.dark_mode_rounded,
+              title: 'Dark',
+              isSelected: true,
             ),
-            ListTile(
-              leading: const Icon(Icons.settings_system_daydream),
-              title: const Text('System Default'),
-              onTap: () => Navigator.of(context).pop(),
+            _buildThemeOption(
+              context,
+              icon: Icons.settings_system_daydream_rounded,
+              title: 'System Default',
+              isSelected: false,
             ),
           ],
         ),
@@ -255,24 +275,67 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildThemeOption(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required bool isSelected,
+  }) {
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? AppTheme.primaryColor : Colors.white60,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? AppTheme.primaryColor : Colors.white,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: isSelected
+          ? Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor)
+          : null,
+      onTap: () => Navigator.of(context).pop(),
+    );
+  }
+
   void _showLanguageDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Choose Language'),
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Choose Language',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text('English'),
+              title: const Text(
+                'English',
+                style: TextStyle(color: Colors.white),
+              ),
+              leading: Icon(
+                Icons.check_circle_rounded,
+                color: AppTheme.primaryColor,
+              ),
               onTap: () => Navigator.of(context).pop(),
             ),
             ListTile(
-              title: const Text('සිංහල (Sinhala)'),
+              title: Text(
+                'සිංහල (Sinhala)',
+                style: TextStyle(color: Colors.white60),
+              ),
               onTap: () => Navigator.of(context).pop(),
             ),
             ListTile(
-              title: const Text('தமிழ் (Tamil)'),
+              title: Text(
+                'தமிழ் (Tamil)',
+                style: TextStyle(color: Colors.white60),
+              ),
               onTap: () => Navigator.of(context).pop(),
             ),
           ],
@@ -285,26 +348,103 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Electricity Tariffs'),
-        content: const Column(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.successColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.bolt_rounded,
+                color: AppTheme.successColor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Electricity Tariffs',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Current CEB Tariff Rates (2024):'),
-            SizedBox(height: 8),
-            Text('0-30 units: LKR 7.85/kWh'),
-            Text('31-60 units: LKR 10.00/kWh'),
-            Text('61-90 units: LKR 27.75/kWh'),
-            Text('91+ units: LKR 32.00/kWh'),
-            Text('Fixed Charge: LKR 400.00'),
-            SizedBox(height: 8),
-            Text('Tariff customization will be available in a future update.'),
+            Text(
+              'Current CEB Tariff Rates (2024):',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildTariffRow('0-30 units', 'LKR 7.85/kWh'),
+            _buildTariffRow('31-60 units', 'LKR 10.00/kWh'),
+            _buildTariffRow('61-90 units', 'LKR 27.75/kWh'),
+            _buildTariffRow('91+ units', 'LKR 32.00/kWh'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Fixed Charge',
+                    style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                  ),
+                  Text(
+                    'LKR 400.00',
+                    style: TextStyle(
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Tariff customization will be available in a future update.',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+            child: Text('OK', style: TextStyle(color: AppTheme.primaryColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTariffRow(String range, String rate) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(range, style: TextStyle(color: Colors.white.withOpacity(0.7))),
+          Text(
+            rate,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -312,23 +452,99 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _showAboutDialog(BuildContext context) {
-    showAboutDialog(
+    showDialog(
       context: context,
-      applicationName: 'Smart Plug',
-      applicationVersion: '1.0.0',
-      applicationIcon: const Icon(Icons.power, size: 48, color: Colors.blue),
-      children: [
-        const Text(
-          'Smart Plug helps you monitor and control your electrical devices remotely.',
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.bolt_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Smart Plug', style: TextStyle(color: Colors.white)),
+                Text(
+                  'Version 1.0.0',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        const Text('Features:'),
-        const Text('• Remote device control'),
-        const Text('• Real-time power monitoring'),
-        const Text('• Energy usage analytics'),
-        const Text('• Cost calculation with CEB tariffs'),
-        const Text('• Device scheduling'),
-      ],
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Smart Plug helps you monitor and control your electrical devices remotely.',
+              style: TextStyle(color: Colors.white.withOpacity(0.8)),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Features:',
+              style: TextStyle(
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildFeatureItem('Remote device control'),
+            _buildFeatureItem('Real-time power monitoring'),
+            _buildFeatureItem('Energy usage analytics'),
+            _buildFeatureItem('Cost calculation with CEB tariffs'),
+            _buildFeatureItem('Device scheduling'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Close',
+              style: TextStyle(color: AppTheme.primaryColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(String feature) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            color: AppTheme.successColor,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            feature,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -336,19 +552,32 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Sign Out', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to sign out?',
+          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withOpacity(0.6)),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(context).pop();
               ref.read(authControllerProvider.notifier).logout();
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             child: const Text('Sign Out'),
           ),
         ],
@@ -567,6 +796,179 @@ class SettingsScreen extends ConsumerWidget {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogoutButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _LogoutButton({required this.onPressed});
+
+  @override
+  State<_LogoutButton> createState() => _LogoutButtonState();
+}
+
+class _LogoutButtonState extends State<_LogoutButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.95,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) {
+        _controller.reverse();
+        widget.onPressed();
+      },
+      onTapCancel: () => _controller.reverse(),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) =>
+            Transform.scale(scale: _scaleAnimation.value, child: child),
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: AppTheme.errorColor.withOpacity(0.15),
+            border: Border.all(color: AppTheme.errorColor.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.logout_rounded, color: AppTheme.errorColor),
+              const SizedBox(width: 8),
+              Text(
+                'Sign Out',
+                style: TextStyle(
+                  color: AppTheme.errorColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// User Profile Card - displayed below the standardized header
+class _UserProfileCard extends StatelessWidget {
+  final dynamic user;
+
+  const _UserProfileCard({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.1),
+            Colors.white.withOpacity(0.05),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.15),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Avatar
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: AppTheme.primaryGradient,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                (user.displayName ?? user.username).substring(0, 1).toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.displayName ?? user.username,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  user.email,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.edit_rounded,
+              color: Colors.white.withOpacity(0.7),
+              size: 18,
+            ),
           ),
         ],
       ),

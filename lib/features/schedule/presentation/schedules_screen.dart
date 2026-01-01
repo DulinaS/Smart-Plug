@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../app/theme.dart';
+import '../../../core/widgets/modern_ui.dart';
+import '../../../core/widgets/curved_header.dart';
 import '../../../data/models/schedule.dart';
 import '../../../core/utils/formatters.dart';
 import '../../timer/application/timer_controller.dart';
@@ -16,42 +19,80 @@ class SchedulesScreen extends ConsumerWidget {
     final scheduleState = ref.watch(scheduleControllerProvider(deviceId));
     final timerState = ref.watch(deviceTimerControllerProvider(deviceId));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Schedules'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () => _showHelpDialog(context),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => ref
-            .read(scheduleControllerProvider(deviceId).notifier)
-            .loadSchedules(),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+    return MeshGradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Column(
           children: [
-            // NEW: active timer banner
-            ActiveTimerBanner(deviceId: deviceId),
-            if (scheduleState.isLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 32),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (scheduleState.schedules.isEmpty)
-              _buildEmptyState(context, ref)
-            else
-              ...scheduleState.schedules.map(
-                (s) => _buildScheduleCard(context, ref, s),
+            // Beautiful curved header
+            ScreenHeader(
+              title: 'Schedules',
+              subtitle: 'Automate your device',
+              icon: Icons.schedule_rounded,
+              accentColor: AppTheme.successColor,
+              actions: [
+                _HeaderActionButton(
+                  icon: Icons.help_outline_rounded,
+                  onTap: () => _showHelpDialog(context),
+                  tooltip: 'Help',
+                ),
+              ],
+            ),
+            // Content
+            Expanded(
+              child: RefreshIndicator(
+                color: AppTheme.primaryColor,
+                backgroundColor: AppTheme.darkCard,
+                onRefresh: () => ref
+                    .read(scheduleControllerProvider(deviceId).notifier)
+                    .loadSchedules(),
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    // Active timer banner
+                    ActiveTimerBanner(deviceId: deviceId),
+                    if (scheduleState.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 32),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation(AppTheme.primaryColor),
+                          ),
+                        ),
+                      )
+                    else if (scheduleState.schedules.isEmpty)
+                      _buildEmptyState(context, ref)
+                    else
+                      ...scheduleState.schedules.map(
+                        (s) => _buildScheduleCard(context, ref, s),
+                      ),
+                    // Bottom padding
+                    SizedBox(height: AppTheme.navBarTotalHeight),
+                  ],
+                ),
               ),
+            ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showScheduleEditor(context, ref),
-        child: const Icon(Icons.add),
+        floatingActionButton: Container(
+          decoration: BoxDecoration(
+            gradient: AppTheme.primaryGradient,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primaryColor.withOpacity(0.4),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: FloatingActionButton(
+            onPressed: () => _showScheduleEditor(context, ref),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: const Icon(Icons.add_rounded, color: Colors.white),
+          ),
+        ),
       ),
     );
   }
@@ -296,30 +337,147 @@ class SchedulesScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('About Schedules'),
-        content: const Column(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.help_rounded, color: AppTheme.primaryColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text('About Schedules', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Schedules allow you to automatically turn your device ON or OFF at specific times.',
+              style: TextStyle(color: Colors.white.withOpacity(0.8)),
             ),
-            SizedBox(height: 12),
-            Text('Features:'),
-            Text('• Set daily or weekly recurring schedules'),
-            Text('• Choose specific weekdays'),
-            Text('• Enable/disable schedules anytime'),
-            Text('• Multiple schedules per device'),
-            SizedBox(height: 12),
-            Text('Note: Device must be online for schedules to work.'),
+            const SizedBox(height: 12),
+            Text(
+              'Features:',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildFeatureItem('Set daily or weekly recurring schedules'),
+            _buildFeatureItem('Choose specific weekdays'),
+            _buildFeatureItem('Enable/disable schedules anytime'),
+            _buildFeatureItem('Multiple schedules per device'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.warningColor.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: AppTheme.warningColor,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Device must be online for schedules to work.',
+                      style: TextStyle(
+                        color: AppTheme.warningColor,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Got it'),
+            child: Text('Got it', style: TextStyle(color: AppTheme.primaryColor)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            color: AppTheme.successColor,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Helper widget for header action buttons
+class _HeaderActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  const _HeaderActionButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.15),
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white.withOpacity(0.9),
+              size: 20,
+            ),
+          ),
+        ),
       ),
     );
   }

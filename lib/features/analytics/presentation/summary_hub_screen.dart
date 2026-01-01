@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../../app/theme.dart';
+import '../../../core/widgets/modern_ui.dart';
+import '../../../core/widgets/curved_header.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/daily_summary.dart';
 import '../../devices/application/user_devices_controller.dart';
@@ -42,23 +45,60 @@ class _SummaryHubScreenState extends ConsumerState<SummaryHubScreen>
       todayUtc.day,
     ).subtract(const Duration(days: 1));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Summary'),
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'Specific day'),
-            Tab(text: 'Time period'),
+    return MeshGradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Column(
+          children: [
+            // Beautiful curved header
+            ScreenHeader(
+              title: 'Analytics',
+              subtitle: 'Energy usage summary',
+              icon: Icons.analytics_rounded,
+              accentColor: AppTheme.secondaryColor,
+            ),
+            const SizedBox(height: 12),  // Spacing between header and tabs
+            // Tab bar
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+              child: TabBar(
+                controller: _tabs,
+                indicator: BoxDecoration(
+                  gradient: AppTheme.primaryGradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicatorPadding: const EdgeInsets.all(4),
+                dividerColor: Colors.transparent,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white.withOpacity(0.5),
+                labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+                tabs: const [
+                  Tab(text: 'Specific day'),
+                  Tab(text: 'Time period'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Tab content
+            Expanded(
+              child: TabBarView(
+                controller: _tabs,
+                children: [
+                  _DaySummaryTab(defaultDate: yesterday),
+                  const _RangeSummaryTab(),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabs,
-        children: [
-          _DaySummaryTab(defaultDate: yesterday),
-          const _RangeSummaryTab(), // IMPLEMENTED / MODIFIED
-        ],
       ),
     );
   }
@@ -105,12 +145,12 @@ class _DaySummaryTabState extends ConsumerState<_DaySummaryTab> {
     final firstSelectable = DateTime(2024, 1, 1); // adjust if needed
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         16,
         16,
         16,
-        28,
-      ), // extra bottom pad to avoid tiny overflows
+        AppTheme.navBarTotalHeight,
+      ), // extra bottom pad to avoid navbar overlap
       children: [
         // Errors (hard failures)
         if (state.error != null) ...[
@@ -308,7 +348,6 @@ class _SummaryCharts extends StatelessWidget {
 
   // Calculate appropriate interval for Y axis
   double? _calculateInterval(List<double> values) {
-    final maxValue = values.reduce((a, b) => a > b ? a : b);
     final maxY = _calculateMaxY(values);
 
     // Calculate a nice interval (aim for 4-6 labels)
@@ -656,7 +695,7 @@ class _RangeSummaryTabState extends ConsumerState<_RangeSummaryTab> {
         : 0.0;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, AppTheme.navBarTotalHeight),
       children: [
         if (state.error != null) ...[
           _Banner(
@@ -965,8 +1004,8 @@ class _EnergyDistributionPie extends StatelessWidget {
                 for (final s in slices)
                   if (s.title != 'No data')
                     _LegendChip(
-                      color: s.color ?? Colors.grey,
-                      label: s.title!.split('\n').first,
+                      color: s.color,
+                      label: s.title.split('\n').first,
                     ),
               ],
             ),

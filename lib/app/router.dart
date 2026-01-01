@@ -13,6 +13,7 @@ import '../features/devices/presentation/user_devices_screen.dart';
 import '../features/onboarding/presentation/add_device_screen.dart';
 import '../../features/onboarding/presentation/device_details_page.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import 'main_shell.dart';
 
 class _RouterRefreshStream extends ChangeNotifier {
   late final StreamSubscription<dynamic> _subscription;
@@ -25,6 +26,9 @@ class _RouterRefreshStream extends ChangeNotifier {
     super.dispose();
   }
 }
+
+// Navigation shell key
+final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authControllerProvider);
@@ -89,17 +93,62 @@ final routerProvider = Provider<GoRouter>((ref) {
           return ConfirmSignupScreen(prefilledEmail: email);
         },
       ),
-      GoRoute(
-        path: '/dashboard',
-        builder: (context, state) => const DashboardScreen(),
+
+      // Shell route for main app with bottom navigation
+      ShellRoute(
+        navigatorKey: _shellNavigatorKey,
+        builder: (context, state, child) {
+          return MainShell(location: state.matchedLocation, child: child);
+        },
+        routes: [
+          GoRoute(
+            path: '/dashboard',
+            pageBuilder: (context, state) => CustomTransitionPage(
+              key: state.pageKey,
+              child: const DashboardScreen(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+            ),
+          ),
+          GoRoute(
+            path: '/devices',
+            pageBuilder: (context, state) => CustomTransitionPage(
+              key: state.pageKey,
+              child: const UserDevicesScreen(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+            ),
+          ),
+          GoRoute(
+            path: '/summary',
+            pageBuilder: (context, state) => CustomTransitionPage(
+              key: state.pageKey,
+              child: const SummaryHubScreen(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+            ),
+          ),
+          GoRoute(
+            path: '/settings',
+            pageBuilder: (context, state) => CustomTransitionPage(
+              key: state.pageKey,
+              child: const SettingsScreen(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+            ),
+          ),
+        ],
       ),
 
-      // Dedicated "My Devices" page (required)
-      GoRoute(
-        path: '/devices',
-        builder: (context, state) => const UserDevicesScreen(),
-      ),
-
+      // Routes outside the shell (with back navigation)
       GoRoute(
         path: '/device/:deviceId',
         builder: (context, state) {
@@ -111,18 +160,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/add-device',
         builder: (context, state) => const AddDeviceScreen(),
       ),
-      // NEW: Device details step to capture sticker ID, name, room, plug type
       GoRoute(
         path: '/provision/details',
         builder: (context, state) => const DeviceDetailsPage(),
-      ),
-      GoRoute(
-        path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
-      ),
-      GoRoute(
-        path: '/summary',
-        builder: (context, state) => const SummaryHubScreen(),
       ),
     ],
   );
