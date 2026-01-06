@@ -145,9 +145,7 @@ class _MainShellState extends ConsumerState<MainShell>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        gradient: value > 0.3
-                            ? AppTheme.primaryGradient
-                            : null,
+                        gradient: value > 0.3 ? AppTheme.primaryGradient : null,
                         color: value > 0.3
                             ? null
                             : AppTheme.primaryColor.withOpacity(0.2 * value),
@@ -178,8 +176,9 @@ class _MainShellState extends ConsumerState<MainShell>
                       item.label,
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight:
-                            value > 0.5 ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: value > 0.5
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                         color: value > 0.3
                             ? Colors.white
                             : Colors.white.withOpacity(0.6),

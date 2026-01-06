@@ -509,10 +509,7 @@ class ScreenHeader extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
-                          colors: [
-                            color.withOpacity(0.15),
-                            Colors.transparent,
-                          ],
+                          colors: [color.withOpacity(0.15), Colors.transparent],
                         ),
                       ),
                     ),
