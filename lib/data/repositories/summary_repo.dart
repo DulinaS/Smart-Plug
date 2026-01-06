@@ -61,7 +61,11 @@ class SummaryRepository {
     try {
       final res = await _http.dio.post(
         AppConfig.periodSummaryEndpoint,
-        data: {'deviceId': deviceId, 'startDate': startDate, 'endDate': endDate},
+        data: {
+          'deviceId': deviceId,
+          'startDate': startDate,
+          'endDate': endDate,
+        },
       );
 
       dynamic body = res.data;

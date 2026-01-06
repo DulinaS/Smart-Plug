@@ -145,19 +145,31 @@ class _MainShellState extends ConsumerState<MainShell>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.15 * value),
+                        gradient: value > 0.3
+                            ? AppTheme.primaryGradient
+                            : null,
+                        color: value > 0.3
+                            ? null
+                            : AppTheme.primaryColor.withOpacity(0.2 * value),
                         borderRadius: BorderRadius.circular(12),
+                        boxShadow: value > 0.5
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.primaryColor.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Transform.scale(
                         scale: 1.0 + (0.1 * value),
                         child: Icon(
                           item.icon,
                           size: 26,
-                          color: Color.lerp(
-                            Colors.white.withOpacity(0.5),
-                            AppTheme.primaryColor,
-                            value,
-                          ),
+                          color: value > 0.3
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.6),
                         ),
                       ),
                     ),
@@ -166,14 +178,11 @@ class _MainShellState extends ConsumerState<MainShell>
                       item.label,
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight: value > 0.5
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: Color.lerp(
-                          Colors.white.withOpacity(0.5),
-                          AppTheme.primaryColor,
-                          value,
-                        ),
+                        fontWeight:
+                            value > 0.5 ? FontWeight.w600 : FontWeight.w400,
+                        color: value > 0.3
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -187,17 +196,17 @@ class _MainShellState extends ConsumerState<MainShell>
           notchSmoothness: NotchSmoothness.verySmoothEdge,
           leftCornerRadius: 28,
           rightCornerRadius: 28,
-          backgroundColor: AppTheme.darkSurface,
+          backgroundColor: const Color(0xFF1A1A2E),
           splashColor: AppTheme.primaryColor.withOpacity(0.3),
           splashSpeedInMilliseconds: 400,
           notchAndCornersAnimation: _borderRadiusAnimation,
           notchMargin: 10,
-          elevation: 0,
+          elevation: 12,
           height: AppTheme.navBarHeight,
-          shadow: const Shadow(
-            color: Colors.black26,
-            blurRadius: 20,
-            offset: Offset(0, -4),
+          shadow: Shadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 24,
+            offset: const Offset(0, -6),
           ),
           onTap: (index) {
             if (index != currentIndex) {

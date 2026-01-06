@@ -23,11 +23,13 @@ class DashboardScreen extends ConsumerWidget {
     final userName =
         authState.user?.displayName ?? authState.user?.username ?? 'User';
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: AnimatedGradientBackground(
-        child: SafeArea(
+    return AnimatedGradientBackground(
+      child: Scaffold(
+        extendBody: true,
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
           top: false,
+          bottom: false,
           child: CustomScrollView(
             slivers: [
               // Modern Curved Header with Welcome Message

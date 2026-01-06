@@ -306,46 +306,50 @@ class HomeHeader extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.white.withOpacity(0.15),
-                  Colors.white.withOpacity(0.05),
+                  Colors.white.withOpacity(0.12),
+                  Colors.white.withOpacity(0.04),
                 ],
               ),
               border: Border.all(
-                color: Colors.white.withOpacity(0.2),
-                width: 1.5,
+                color: Colors.white.withOpacity(0.15),
+                width: 1,
               ),
             ),
             child: Row(
               children: [
                 // Welcome icon
                 _buildWelcomeIcon(),
-                const SizedBox(width: 14),
+                const SizedBox(width: 16),
                 // Greeting and name
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         greeting,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 13,
+                          color: Colors.white.withOpacity(0.65),
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
+                          letterSpacing: 0.5,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         userName,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
                           letterSpacing: -0.5,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      const SizedBox(height: 2),
+                      _buildDeviceStats(),
                     ],
                   ),
                 ),
@@ -410,11 +414,32 @@ class HomeHeader extends StatelessWidget {
     );
   }
 
+  Widget _buildDeviceStats() {
+    return Row(
+      children: [
+        Icon(
+          Icons.devices_rounded,
+          size: 12,
+          color: Colors.white.withOpacity(0.5),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$deviceCount ${deviceCount == 1 ? 'device' : 'devices'} connected',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning 👋';
-    if (hour < 17) return 'Good Afternoon 👋';
-    return 'Good Evening 👋';
+    if (hour < 12) return 'GOOD MORNING';
+    if (hour < 17) return 'GOOD AFTERNOON';
+    return 'GOOD EVENING';
   }
 }
 
@@ -465,41 +490,27 @@ class ScreenHeader extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    color.withOpacity(0.35),
-                    AppTheme.darkSurface.withOpacity(0.9),
-                    AppTheme.darkBackground,
+                    color.withOpacity(0.25),
+                    AppTheme.darkSurface.withOpacity(0.85),
+                    AppTheme.darkBackground.withOpacity(0.95),
                   ],
-                  stops: const [0.0, 0.5, 1.0],
+                  stops: const [0.0, 0.6, 1.0],
                 ),
               ),
               child: Stack(
                 children: [
-                  // Decorative orbs
+                  // Subtle accent orb
                   Positioned(
-                    top: -30,
-                    right: -20,
+                    top: -20,
+                    right: 40,
                     child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [color.withOpacity(0.3), Colors.transparent],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 10,
-                    left: -30,
-                    child: Container(
-                      width: 80,
-                      height: 80,
+                      width: 120,
+                      height: 120,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            AppTheme.secondaryColor.withOpacity(0.2),
+                            color.withOpacity(0.15),
                             Colors.transparent,
                           ],
                         ),
@@ -522,15 +533,25 @@ class ScreenHeader extends StatelessWidget {
                       ],
                       if (icon != null) ...[
                         Container(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: color.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: color.withOpacity(0.3)),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                color.withOpacity(0.2),
+                                color.withOpacity(0.1),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: color.withOpacity(0.25),
+                              width: 1,
+                            ),
                           ),
-                          child: Icon(icon, color: color, size: 24),
+                          child: Icon(icon, color: Colors.white, size: 22),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 16),
                       ],
                       Expanded(
                         child: Column(
@@ -541,9 +562,9 @@ class ScreenHeader extends StatelessWidget {
                               title,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: -0.3,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.5,
                               ),
                             ),
                             if (subtitle != null) ...[
@@ -551,8 +572,9 @@ class ScreenHeader extends StatelessWidget {
                               Text(
                                 subtitle!,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.6),
-                                  fontSize: 14,
+                                  color: Colors.white.withOpacity(0.55),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                             ],
