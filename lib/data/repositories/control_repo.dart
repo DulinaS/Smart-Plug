@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
 import '../../core/services/secure_store.dart';
 import '../../core/config/env.dart';
+import '../../core/utils/error_handler.dart';
 
 abstract class ControlRepository {
   Future<void> setOnOff({required String deviceId, required bool on});
@@ -30,11 +31,9 @@ class ControlRepositoryImpl implements ControlRepository {
     try {
       await _http.dio.post(_commandUrl, data: body);
     } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      if (code == 404) throw 'Device not found';
-      if (code == 400) throw 'Invalid request';
-      if (code == 409) throw 'Device is offline or busy';
-      throw 'Command failed';
+      throw ErrorHandler.handleControlError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Device control');
     }
   }
 
@@ -59,13 +58,9 @@ class ControlRepositoryImpl implements ControlRepository {
           : 'Timer scheduled';
       return msg;
     } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      final msg =
-          e.response?.data?.toString() ?? e.message ?? 'Schedule failed';
-      if (code == 404) throw 'Device not found';
-      if (code == 400) throw 'Invalid timer request';
-      if (code == 409) throw 'Device is offline or busy';
-      throw msg;
+      throw ErrorHandler.handleControlError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Schedule timer');
     }
   }
 }

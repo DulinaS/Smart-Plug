@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
 import '../../core/config/env.dart';
+import '../../core/utils/error_handler.dart';
 import '../models/daily_summary.dart';
 
 class SummaryRepository {
@@ -46,7 +47,9 @@ class SummaryRepository {
       if (code == 404 || msg.contains('no records')) {
         return null;
       }
-      rethrow;
+      throw ErrorHandler.handleDeviceError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Load daily summary');
     }
   }
 
@@ -55,25 +58,35 @@ class SummaryRepository {
     required String startDate, // YYYY-MM-DD
     required String endDate, // YYYY-MM-DD
   }) async {
-    final res = await _http.dio.post(
-      AppConfig.periodSummaryEndpoint,
-      data: {'deviceId': deviceId, 'startDate': startDate, 'endDate': endDate},
-    );
+    try {
+      final res = await _http.dio.post(
+        AppConfig.periodSummaryEndpoint,
+        data: {
+          'deviceId': deviceId,
+          'startDate': startDate,
+          'endDate': endDate,
+        },
+      );
 
-    dynamic body = res.data;
-    if (body is String) body = json.decode(body);
-    if (body is Map && body['body'] != null) {
-      body = body['body'];
+      dynamic body = res.data;
       if (body is String) body = json.decode(body);
-    }
+      if (body is Map && body['body'] != null) {
+        body = body['body'];
+        if (body is String) body = json.decode(body);
+      }
 
-    if (body is Map && body['records'] is List) {
-      return (body['records'] as List)
-          .whereType<Map<String, dynamic>>()
-          .toList();
-    }
+      if (body is Map && body['records'] is List) {
+        return (body['records'] as List)
+            .whereType<Map<String, dynamic>>()
+            .toList();
+      }
 
-    return <Map<String, dynamic>>[];
+      return <Map<String, dynamic>>[];
+    } on DioException catch (e) {
+      throw ErrorHandler.handleDeviceError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Load period summary');
+    }
   }
 }
 

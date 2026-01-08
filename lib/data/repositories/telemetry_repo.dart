@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
+import '../../core/utils/error_handler.dart';
 import '../models/telemetry.dart';
 
 class TelemetryRepository {
@@ -27,7 +28,9 @@ class TelemetryRepository {
       final List<dynamic> data = response.data['telemetry'];
       return data.map((json) => TelemetryReading.fromJson(json)).toList();
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleDeviceError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Load telemetry data');
     }
   }
 
@@ -43,7 +46,9 @@ class TelemetryRepository {
 
       return UsageSummary.fromJson(response.data['summary']);
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleDeviceError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Load usage summary');
     }
   }
 
@@ -59,7 +64,9 @@ class TelemetryRepository {
 
       return response.data;
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleDeviceError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Load cost summary');
     }
   }
 
@@ -72,17 +79,9 @@ class TelemetryRepository {
 
       return response.data;
     } on DioException catch (e) {
-      throw _handleError(e);
-    }
-  }
-
-  String _handleError(DioException e) {
-    if (e.response?.statusCode == 404) {
-      return 'Data not found';
-    } else if (e.response?.statusCode == 400) {
-      return 'Invalid date range';
-    } else {
-      return 'Failed to load telemetry data';
+      throw ErrorHandler.handleDioError(e, context: 'Billing estimate');
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Load billing estimate');
     }
   }
 }

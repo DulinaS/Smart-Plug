@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
 import '../../core/services/secure_store.dart';
 import '../../core/config/env.dart';
+import '../../core/utils/error_handler.dart';
 import '../models/sensor_reading.dart';
 
 class DeviceRepository {
@@ -96,11 +97,9 @@ class DeviceRepository {
         timestamp: slTs.toIso8601String(),
       );
     } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      final body = e.response?.data;
-      throw 'HTTP ${code ?? '?'} fetching latest: ${e.message} ${body ?? ''}';
+      throw ErrorHandler.handleDeviceError(e);
     } catch (e) {
-      throw 'Failed to fetch latest reading: $e';
+      throw ErrorHandler.handleException(e, context: 'Fetch device data');
     }
   }
 
@@ -112,8 +111,9 @@ class DeviceRepository {
         data: {'deviceId': deviceId, 'command': turnOn ? 'ON' : 'OFF'},
       );
     } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      throw 'HTTP ${code ?? '?'} sending command: ${e.message}';
+      throw ErrorHandler.handleControlError(e);
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Device control');
     }
   }
 }
