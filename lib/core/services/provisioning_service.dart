@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../utils/error_handler.dart';
 
 // Optional: automatic AP connect on Android via wifi_iot
 // Add wifi_iot to pubspec.yaml to use this path. If unavailable, connectToAp will no-op gracefully.
@@ -139,19 +140,29 @@ class ProvisioningService {
     return false;
   }
 
-  /// POST Wi‑Fi credentials to the device.
   Future<void> sendWifiCredentials({
     required String ssid,
     required String password,
   }) async {
-    final body = {'ssid': ssid, 'password': password};
-    final res = await _dio.postUri(
-      _u('/config'),
-      data: jsonEncode(body),
-      options: Options(headers: {'Content-Type': 'application/json'}),
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Device rejected credentials (${res.statusCode})');
+    try {
+      final body = {'ssid': ssid, 'password': password};
+      final res = await _dio.postUri(
+        _u('/config'),
+        data: jsonEncode(body),
+        options: Options(headers: {'Content-Type': 'application/json'}),
+      );
+      if (res.statusCode != 200) {
+        throw 'Device rejected Wi-Fi credentials. Please check the password and try again.';
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        throw 'Device not responding. Please ensure you are connected to the device hotspot.';
+      }
+      throw 'Failed to send Wi-Fi credentials to device. Please try again.';
+    } catch (e) {
+      if (e is String) rethrow;
+      throw ErrorHandler.handleException(e, context: 'Configure device');
     }
   }
 
@@ -200,27 +211,48 @@ class ProvisioningService {
 
   /// Re-enable AP without clearing creds (AP+STA mode).
   Future<void> reprovisionAp() async {
-    final res = await _dio.getUri(_u('/reprovision'));
-    if (res.statusCode != 200) {
-      throw Exception('Failed to re-enable AP (${res.statusCode})');
+    try {
+      final res = await _dio.getUri(_u('/reprovision'));
+      if (res.statusCode != 200) {
+        throw 'Failed to re-enable device access point.';
+      }
+    } on DioException catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Re-enable device AP');
+    } catch (e) {
+      if (e is String) rethrow;
+      throw ErrorHandler.handleException(e, context: 'Re-enable device AP');
     }
   }
 
   /// Clear saved Wi‑Fi credentials and start AP.
   Future<void> resetDevice() async {
-    final res = await _dio.getUri(_u('/reset'));
-    if (res.statusCode != 200) {
-      throw Exception('Failed to reset device (${res.statusCode})');
+    try {
+      final res = await _dio.getUri(_u('/reset'));
+      if (res.statusCode != 200) {
+        throw 'Failed to reset device. Please try again.';
+      }
+    } on DioException catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Reset device');
+    } catch (e) {
+      if (e is String) rethrow;
+      throw ErrorHandler.handleException(e, context: 'Reset device');
     }
   }
 
   /// Single read of /status (no waiting)
   Future<StatusResult> getStatus() async {
-    final res = await _dio.getUri(_u('/status'));
-    if (res.statusCode != 200) {
-      throw Exception('Status fetch failed (${res.statusCode})');
+    try {
+      final res = await _dio.getUri(_u('/status'));
+      if (res.statusCode != 200) {
+        throw 'Failed to get device status.';
+      }
+      return StatusResult.fromJson(_asMap(res.data));
+    } on DioException catch (e) {
+      throw 'Device not responding. Please check your connection to the device hotspot.';
+    } catch (e) {
+      if (e is String) rethrow;
+      throw ErrorHandler.handleException(e, context: 'Get device status');
     }
-    return StatusResult.fromJson(_asMap(res.data));
   }
 
   // ---------- Helpers ----------

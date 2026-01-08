@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
 import '../../core/services/secure_store.dart';
 import '../../core/config/env.dart';
+import '../../core/utils/error_handler.dart';
 import '../models/user.dart';
 
 class AuthRepository {
@@ -30,7 +31,7 @@ class AuthRepository {
       );
       return response.data;
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleAuthError(e);
     }
   }
 
@@ -90,7 +91,7 @@ class AuthRepository {
         billingType: billing, // NEW
       );
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleAuthError(e);
     }
   }
 
@@ -102,7 +103,7 @@ class AuthRepository {
       );
       return response.data['message']?.toString().contains('verified') ?? false;
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleAuthError(e);
     }
   }
 
@@ -135,15 +136,6 @@ class AuthRepository {
     } catch (_) {
       return null;
     }
-  }
-
-  String _handleError(DioException e) {
-    if (e.response?.statusCode == 401) return 'Invalid credentials';
-    if (e.response?.statusCode == 409) return 'User already exists';
-    if (e.response?.data?['message'] != null) {
-      return e.response!.data['message'];
-    }
-    return 'Authentication failed';
   }
 }
 

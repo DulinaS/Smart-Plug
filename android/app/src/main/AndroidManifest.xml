@@ -20,7 +20,7 @@
         tools:targetApi="33" />
 
     <application
-        android:label="smart_plug"
+        android:label="AmpWare"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"

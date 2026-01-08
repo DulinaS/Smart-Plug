@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/http_client.dart';
 import '../../core/config/env.dart';
+import '../../core/utils/error_handler.dart';
 import '../models/schedule.dart';
 
 class ScheduleRepository {
@@ -41,6 +42,8 @@ class ScheduleRepository {
               DateTime.tryParse(data['createdAt'] ?? '') ?? DateTime.now(),
         );
       }).toList();
+    } on DioException catch (e) {
+      throw ErrorHandler.handleDioError(e, context: 'Load schedules');
     } catch (e) {
       return _getMockSchedules(deviceId);
     }
@@ -68,7 +71,9 @@ class ScheduleRepository {
         },
       );
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleDioError(e, context: 'Create schedule');
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Create schedule');
     }
   }
 
@@ -79,7 +84,9 @@ class ScheduleRepository {
         data: {'scheduleName': scheduleId},
       );
     } on DioException catch (e) {
-      throw _handleError(e);
+      throw ErrorHandler.handleDioError(e, context: 'Delete schedule');
+    } catch (e) {
+      throw ErrorHandler.handleException(e, context: 'Delete schedule');
     }
   }
 
@@ -134,13 +141,6 @@ class ScheduleRepository {
         createdAt: DateTime.now(),
       ),
     ];
-  }
-
-  String _handleError(DioException e) {
-    if (e.response?.data?['message'] != null) {
-      return e.response!.data['message'];
-    }
-    return 'Schedule operation failed';
   }
 }
 

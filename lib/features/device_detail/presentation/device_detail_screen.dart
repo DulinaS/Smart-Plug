@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:smart_plug/features/onboarding/domain/plug_types.dart';
+import '../../../app/theme.dart';
+import '../../../core/widgets/modern_ui.dart';
+import '../../../core/widgets/curved_header.dart';
 import '../../devices/application/user_devices_controller.dart';
 import 'widgets/device_control_card.dart';
 
@@ -76,115 +78,228 @@ class _DeviceDetailScreenState extends ConsumerState<DeviceDetailScreen> {
           );
         }
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              device.deviceName.isNotEmpty
-                  ? device.deviceName
-                  : device.deviceId,
+        return MeshGradientBackground(
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Column(
+              children: [
+                // Beautiful Curved Header
+                ScreenHeader(
+                  title: device.deviceName.isNotEmpty
+                      ? device.deviceName
+                      : device.deviceId,
+                  subtitle: device.roomName ?? 'Smart Plug',
+                  icon: Icons.power_rounded,
+                  accentColor: AppTheme.secondaryColor,
+                  actions: [
+                    _DetailHeaderActionButton(
+                      icon: Icons.refresh_rounded,
+                      onTap: () => ref
+                          .read(userDevicesControllerProvider.notifier)
+                          .refresh(),
+                      tooltip: 'Refresh',
+                    ),
+                  ],
+                ),
+                // Content
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // Device Info Card
+                      GlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withOpacity(
+                                      0.2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.info_outline_rounded,
+                                    color: AppTheme.primaryColor,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Device Info',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            _buildInfoRow(
+                              context,
+                              'Device ID',
+                              device.deviceId,
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Display Name',
+                              device.deviceName,
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Room',
+                              device.roomName ?? '-',
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Plug Type',
+                              device.plugType ?? '-',
+                            ),
+                            _buildInfoRow(
+                              context,
+                              'Linked At',
+                              _formatDate(device.createdAt),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Controls Card
+                      DeviceControlCard(deviceId: device.deviceId),
+
+                      const SizedBox(height: 16),
+
+                      // Monitoring Card
+                      GlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.successColor.withOpacity(
+                                      0.2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.analytics_rounded,
+                                    color: AppTheme.successColor,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Monitoring',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Live status and power charts will appear here once telemetry API is provided.',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Bottom padding
+                      SizedBox(height: AppTheme.navBarTotalHeight),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            actions: [
-              IconButton(
-                tooltip: 'Refresh',
-                icon: const Icon(Icons.refresh),
-                onPressed: () =>
-                    ref.read(userDevicesControllerProvider.notifier).refresh(),
-              ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Device ID',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        device.deviceId,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Display name',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        device.deviceName,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Room',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        device.roomName ?? '-',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Plug type',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        device.plugType ?? '-',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Linked at',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        device.createdAt.toIso8601String(),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // NEW: Controls (uses your /device/command API)
-              DeviceControlCard(deviceId: device.deviceId),
-
-              const SizedBox(height: 16),
-
-              // Placeholder for monitoring (to be implemented once telemetry APIs are ready)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Monitoring',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Live status and power charts will appear here once telemetry API is provided.',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildInfoRow(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+// Helper widget for header action buttons
+class _DetailHeaderActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  const _DetailHeaderActionButton({
+    required this.icon,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
+            ),
+            child: Icon(icon, color: Colors.white.withOpacity(0.9), size: 20),
+          ),
+        ),
+      ),
     );
   }
 }
