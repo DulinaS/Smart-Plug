@@ -13,6 +13,7 @@ import '../features/devices/presentation/user_devices_screen.dart';
 import '../features/onboarding/presentation/add_device_screen.dart';
 import '../../features/onboarding/presentation/device_details_page.dart';
 import '../features/settings/presentation/settings_screen.dart';
+import '../features/timer/presentation/timer_automation_screen.dart';
 import 'main_shell.dart';
 
 class _RouterRefreshStream extends ChangeNotifier {
@@ -159,6 +160,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/add-device',
         builder: (context, state) => const AddDeviceScreen(),
+      ),
+      GoRoute(
+        path: '/timer',
+        builder: (context, state) => const TimerAutomationScreen(),
       ),
       GoRoute(
         path: '/provision/details',

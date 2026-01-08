@@ -7,7 +7,6 @@ import '../../../core/widgets/curved_header.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../devices/application/user_devices_controller.dart';
 import 'widgets/quick_control_card.dart';
-import 'widgets/auto_off_timer_card.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -82,7 +81,7 @@ class DashboardScreen extends ConsumerWidget {
               // Quick Controls Section
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: devicesAsync.when(
                     data: (list) {
                       if (list.isEmpty) {
@@ -98,26 +97,7 @@ class DashboardScreen extends ConsumerWidget {
                             actionIcon: Icons.arrow_forward_rounded,
                             onAction: () => context.go('/devices'),
                           ),
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  mainAxisExtent: 140,
-                                ),
-                            itemCount: quickDevices.length,
-                            itemBuilder: (context, index) {
-                              return AnimatedListItem(
-                                index: index,
-                                child: QuickControlCard(
-                                  device: quickDevices[index],
-                                ),
-                              );
-                            },
-                          ),
+                          _buildResponsiveDeviceGrid(context, quickDevices),
                         ],
                       );
                     },
@@ -127,31 +107,10 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
 
-              // Auto-off Timer Section
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                  child: devicesAsync.when(
-                    data: (list) {
-                      if (list.isEmpty) return const SizedBox.shrink();
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SectionHeader(title: 'Timer & Automation'),
-                          const AutoOffTimerCard(),
-                        ],
-                      );
-                    },
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-
               // Shortcuts Section
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -172,11 +131,39 @@ class DashboardScreen extends ConsumerWidget {
                             onTap: () => context.push('/add-device'),
                           ),
                           _ShortcutTile(
+                            icon: Icons.timer_rounded,
+                            title: 'Timer',
+                            subtitle: 'Auto-off timer',
+                            gradient: AppTheme.accentGradient,
+                            onTap: () => context.push('/timer'),
+                          ),
+                          _ShortcutTile(
                             icon: Icons.analytics_rounded,
                             title: 'Analytics',
                             subtitle: 'Usage summary',
-                            gradient: AppTheme.accentGradient,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppTheme.primaryColor,
+                                AppTheme.primaryColor.withOpacity(0.7),
+                              ],
+                            ),
                             onTap: () => context.go('/summary'),
+                          ),
+                          _ShortcutTile(
+                            icon: Icons.settings_rounded,
+                            title: 'Settings',
+                            subtitle: 'App preferences',
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.grey.shade700,
+                                Colors.grey.shade800,
+                              ],
+                            ),
+                            onTap: () => context.go('/settings'),
                           ),
                         ],
                       ),
@@ -190,6 +177,71 @@ class DashboardScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildResponsiveDeviceGrid(
+    BuildContext context,
+    List<dynamic> quickDevices,
+  ) {
+    final deviceCount = quickDevices.length;
+
+    // If only 1 device, take full width
+    if (deviceCount == 1) {
+      return AnimatedListItem(
+        index: 0,
+        child: SizedBox(
+          height: 140,
+          width: double.infinity,
+          child: QuickControlCard(device: quickDevices[0]),
+        ),
+      );
+    }
+
+    // For 2 devices, show side by side
+    if (deviceCount == 2) {
+      return Row(
+        children: [
+          Expanded(
+            child: AnimatedListItem(
+              index: 0,
+              child: SizedBox(
+                height: 140,
+                child: QuickControlCard(device: quickDevices[0]),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: AnimatedListItem(
+              index: 1,
+              child: SizedBox(
+                height: 140,
+                child: QuickControlCard(device: quickDevices[1]),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // For 3+ devices, use grid
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        mainAxisExtent: 140,
+      ),
+      itemCount: deviceCount,
+      itemBuilder: (context, index) {
+        return AnimatedListItem(
+          index: index,
+          child: QuickControlCard(device: quickDevices[index]),
+        );
+      },
     );
   }
 
