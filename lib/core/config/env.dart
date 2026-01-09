@@ -30,4 +30,10 @@ class AppConfig {
 
   //Scheduling endpoint
   static const String scheduleCommandEndpoint = '$controlBaseUrl/schedule';
+
+  // Cost Calculation endpoint
+  static const String costCalculateBaseUrl =
+      'https://g3sfzeadgf.execute-api.us-east-1.amazonaws.com';
+  static const String costCalculateEndpoint =
+      '$costCalculateBaseUrl/costcalculate';
 }

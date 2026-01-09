@@ -124,18 +124,25 @@ class DashboardScreen extends ConsumerWidget {
                         physics: const NeverScrollableScrollPhysics(),
                         children: [
                           _ShortcutTile(
-                            icon: Icons.add_circle_rounded,
-                            title: 'Add Device',
-                            subtitle: 'Wi-Fi setup',
-                            gradient: AppTheme.successGradient,
-                            onTap: () => context.push('/add-device'),
-                          ),
-                          _ShortcutTile(
                             icon: Icons.timer_rounded,
                             title: 'Timer',
                             subtitle: 'Auto-off timer',
                             gradient: AppTheme.accentGradient,
                             onTap: () => context.push('/timer'),
+                          ),
+                          _ShortcutTile(
+                            icon: Icons.calculate_rounded,
+                            title: 'Cost Calculator',
+                            subtitle: 'Estimate bills',
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppTheme.warningColor,
+                                AppTheme.warningColor.withOpacity(0.7),
+                              ],
+                            ),
+                            onTap: () => context.push('/cost-calculator'),
                           ),
                           _ShortcutTile(
                             icon: Icons.analytics_rounded,
