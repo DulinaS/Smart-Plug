@@ -134,7 +134,7 @@ class PeriodSummaryController extends StateNotifier<PeriodSummaryState> {
             RangeDay(
               date: cursor,
               hasData: false,
-              totalPower: 0,
+              totalEnergy: 0,
               avgPower: 0,
               avgCurrent: 0,
               avgVoltage: 0,
@@ -142,11 +142,13 @@ class PeriodSummaryController extends StateNotifier<PeriodSummaryState> {
           );
           missing++;
         } else {
+          // Convert total_power from Wh to kWh (divide by 1000)
+          final totalPowerWh = (rec['total_power'] ?? 0).toDouble();
           days.add(
             RangeDay(
               date: cursor,
               hasData: true,
-              totalPower: (rec['total_power'] ?? 0).toDouble(),
+              totalEnergy: totalPowerWh / 1000.0, // Wh → kWh
               avgPower: (rec['avg_power'] ?? 0).toDouble(),
               avgCurrent: (rec['avg_current'] ?? 0).toDouble(),
               avgVoltage: (rec['avg_voltage'] ?? 0).toDouble(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/analytics/presentation/summary_hub_screen.dart';
+import '../features/analytics/presentation/cost_calculation_screen.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/presentation/confirm_signup_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
@@ -164,6 +165,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/timer',
         builder: (context, state) => const TimerAutomationScreen(),
+      ),
+      GoRoute(
+        path: '/cost-calculator',
+        builder: (context, state) => const CostCalculationScreen(),
       ),
       GoRoute(
         path: '/provision/details',

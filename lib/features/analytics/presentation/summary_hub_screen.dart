@@ -368,7 +368,7 @@ class _SummaryCharts extends StatelessWidget {
     final cards = [
       _StatCard(
         label: 'Total Energy',
-        value: '${Formatters.energy(summary.totalPower)} kWh',
+        value: '${Formatters.energy(summary.totalEnergy)} kWh',
         icon: Icons.bolt,
         color: Colors.orange,
       ),
@@ -677,7 +677,7 @@ class _RangeSummaryTabState extends ConsumerState<_RangeSummaryTab> {
     final availableDays = state.days.where((d) => d.hasData).toList();
     final totalKwh = availableDays.fold<double>(
       0.0,
-      (a, b) => a + b.totalPower,
+      (a, b) => a + b.totalEnergy,
     );
     final avgPower = availableDays.isNotEmpty
         ? availableDays.fold<double>(0.0, (a, b) => a + b.avgPower) /
@@ -915,18 +915,18 @@ class _EnergyDistributionPie extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = days.fold<double>(0, (a, b) => a + b.totalPower);
+    final total = days.fold<double>(0, (a, b) => a + b.totalEnergy);
     final missingCount = days.where((d) => !d.hasData).length;
 
     // Build sections: Each day with >0 energy gets slice; if all zero or missing, show placeholder
     final slices = <PieChartSectionData>[];
     for (final d in days) {
-      if (d.totalPower > 0) {
-        final pct = total > 0 ? (d.totalPower / total) * 100 : 0;
+      if (d.totalEnergy > 0) {
+        final pct = total > 0 ? (d.totalEnergy / total) * 100 : 0;
         slices.add(
           PieChartSectionData(
             color: _colorForIndex(days.indexOf(d)),
-            value: d.totalPower,
+            value: d.totalEnergy,
             title: '${d.date.month}/${d.date.day}\n${pct.toStringAsFixed(0)}%',
             radius: 56,
             titleStyle: const TextStyle(
@@ -1041,7 +1041,7 @@ class _TotalEnergyBar extends StatelessWidget {
   double _computeMaxY() {
     final maxVal = days.fold<double>(
       0,
-      (a, b) => a > b.totalPower ? a : b.totalPower,
+      (a, b) => a > b.totalEnergy ? a : b.totalEnergy,
     );
     return (maxVal == 0 ? 1 : maxVal) * 1.15; // pad
   }
@@ -1049,7 +1049,7 @@ class _TotalEnergyBar extends StatelessWidget {
   double _tickInterval() {
     final maxVal = days.fold<double>(
       0,
-      (a, b) => a > b.totalPower ? a : b.totalPower,
+      (a, b) => a > b.totalEnergy ? a : b.totalEnergy,
     );
     if (maxVal <= 1) return 0.2;
     if (maxVal <= 5) return 1;
@@ -1145,7 +1145,7 @@ class _TotalEnergyBar extends StatelessWidget {
                       x: i,
                       barRods: [
                         BarChartRodData(
-                          toY: day.totalPower,
+                          toY: day.totalEnergy,
                           color: day.hasData
                               ? Colors.deepPurple
                               : Colors.grey.shade400,
@@ -1166,7 +1166,7 @@ class _TotalEnergyBar extends StatelessWidget {
                         final day = days[group.x.toInt()];
                         return BarTooltipItem(
                           '${day.date.month}/${day.date.day}\n'
-                          '${day.totalPower.toStringAsFixed(2)} kWh',
+                          '${day.totalEnergy.toStringAsFixed(2)} kWh',
                           const TextStyle(
                             color: Colors.white,
                             fontSize: 7,
